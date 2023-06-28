@@ -29,9 +29,15 @@ struct dmem_emu_ap_info {
 	uint64_t ap_num;
 	/* Emulation mode AP state variables */
 	uint32_t apbap_tar;
-	uint32_t apbap_tar_inc;
 	uint32_t apbap_csw;
 };
+
+/*
+ * This macro is used to determine the TAR increment size in bytes.  The AP's CSW
+ * encoding for SIZE supports byte count decode using "1 << SIZE".
+ */
+#define MEMAP_TAR_INC(csw)  ((0 != ((csw) & CSW_ADDRINC_MASK)) ? (1 << ((csw) & CSW_SIZE_MASK)) : 0);
+
 /*
  * This bit tells if the transaction is coming in from jtag or not
  * we just mask this out to emulate direct address access
@@ -132,12 +138,11 @@ static int dmem_emu_ap_q_read(unsigned int ap_idx, unsigned int reg, uint32_t *d
 
 			break;
 		case ADIV5_MEM_AP_REG_DRW:
-			addr = (ap_info->apbap_tar & ~0x3) + ap_info->apbap_tar_inc;
+			addr = ap_info->apbap_tar;
 
 			*data = dmem_emu_get_ap_reg(addr);
 
-			if (ap_info->apbap_csw & CSW_ADDRINC_MASK)
-				ap_info->apbap_tar_inc += (ap_info->apbap_csw & 0x03) * 2;
+			ap_info->apbap_tar += MEMAP_TAR_INC(ap_info->apbap_csw);
 			break;
 		default:
 			LOG_INFO("%s: Unknown reg: 0x%02x", __func__, reg);
@@ -160,11 +165,14 @@ static int dmem_emu_ap_q_write(unsigned int ap_idx, unsigned int reg, uint32_t d
 
 	switch (reg) {
 		case ADIV5_MEM_AP_REG_CSW:
-			ap_info->apbap_csw = data;
+			/* This implementation only supports 32-bit accesses.      */
+			/* Force this by ensuring CSW_SIZE field indicates 32-BIT. */
+			ap_info->apbap_csw = ((data & ~CSW_SIZE_MASK) | CSW_32BIT);
 			break;
 		case ADIV5_MEM_AP_REG_TAR:
-			ap_info->apbap_tar = data;
-			ap_info->apbap_tar_inc = 0;
+			/* This implementation only supports 32-bit accesses.      */
+			/* Force LS 2-bits of TAR to 00b */
+			ap_info->apbap_tar = (data & ~0x3);
 			break;
 
 		case ADIV5_MEM_AP_REG_CFG:
@@ -183,11 +191,10 @@ static int dmem_emu_ap_q_write(unsigned int ap_idx, unsigned int reg, uint32_t d
 
 			break;
 		case ADIV5_MEM_AP_REG_DRW:
-			addr = (ap_info->apbap_tar & ~0x3) + ap_info->apbap_tar_inc;
+			addr = ap_info->apbap_tar;
 			dmem_emu_set_ap_reg(addr, data);
 
-			if (ap_info->apbap_csw & CSW_ADDRINC_MASK)
-				ap_info->apbap_tar_inc += (ap_info->apbap_csw & 0x03) * 2;
+			ap_info->apbap_tar += MEMAP_TAR_INC(ap_info->apbap_csw);
 			break;
 		default:
 			LOG_INFO("%s: Unknown reg: 0x%02x", __func__, reg);
