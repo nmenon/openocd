@@ -21,6 +21,10 @@
 #define USERID		(FACTORYREGION + 0x008)
 #define SRAMFLASH	(FACTORYREGION + 0x018)
 
+#define FLASH_BASE_NONMAIN (0x41c00000)
+#define FLASH_BASE_MAIN (0x41c00000)
+#define FLASH_BASE_DATA (0x41d00000)
+
 #define FLASH_CONTROL_BASE	0x400fd000
 #define FLASH_FMA	(FLASH_CONTROL_BASE | 0x000)
 #define FLASH_FMD	(FLASH_CONTROL_BASE | 0x004)
@@ -53,6 +57,8 @@
 #define EXTRACT_VAL(var, h, l) (((var) & GENMASK((h),(l))) >> (l))
 
 struct mspm0_flash_bank {
+	/* Base Address for this instance */
+	uint32_t base_address;
 	/* chip id register */
 	uint32_t did;
 	/* Device Unique ID register */
@@ -63,27 +69,13 @@ struct mspm0_flash_bank {
 	uint32_t data_flash_size_kb;
 	uint32_t main_flash_size_kb;
 	uint32_t main_flash_num_banks;
+	uint32_t sector_size;
 	/* Decoded SRAM information */
 	uint32_t sram_size_kb;
 
 	/* ID information index */
 	uint8_t mspm0_info_index;
 	uint8_t mspm0_part_info_index;
-
-	uint32_t sramsiz;
-	/* flash geometry */
-	uint32_t num_pages;
-	uint32_t pagesize;
-
-	/* main clock status */
-	uint32_t rcc;
-	uint32_t rcc2;
-	uint8_t mck_valid;
-	uint8_t xtal_mask;
-	uint32_t iosc_freq;
-	uint32_t mck_freq;
-	const char *iosc_desc;
-	const char *mck_desc;
 };
 
 struct mspm0_part_info {
@@ -233,27 +225,28 @@ FLASH_BANK_COMMAND_HANDLER(mspm0_flash_bank_command)
 	struct mspm0_flash_bank *mspm0_info;
 
 	LOG_ERROR("%s", __func__);
-	if (CMD_ARGC < 6)
-		return ERROR_COMMAND_SYNTAX_ERROR;
+	switch (bank->base) {
+	case FLASH_BASE_NONMAIN:
+	case FLASH_BASE_MAIN:
+	case FLASH_BASE_DATA: /* Warning: detected runtime */
+		break;
+	default:
+		LOG_ERROR("Invalid bank address " TARGET_ADDR_FMT, bank->base);
+		return ERROR_FAIL;
+	}
 
 	mspm0_info = calloc(sizeof(struct mspm0_flash_bank), 1);
 	if (!mspm0_info) {
 		LOG_ERROR("%s: Out of memory for mspm0_info!", __func__);
 		return ERROR_FAIL;
 	}
-	bank->base = 0x0;
+
 	bank->driver_priv = mspm0_info;
 
 	mspm0_info->mspm0_info_index = 0xff;
 	mspm0_info->mspm0_part_info_index = 0xff;
+	mspm0_info->sector_size = 0x400;
 
-	/* part wasn't probed for info yet */
-	mspm0_info->did = 0;
-
-	/* TODO Specify the main crystal speed in kHz using an optional
-	 * argument; ditto, the speed of an external oscillator used
-	 * instead of a crystal.  Avoid programming flash using IOSC.
-	 */
 	return ERROR_OK;
 }
 
@@ -274,8 +267,9 @@ static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cm
 		target_name = "Un Identified";
 	else
 		target_name =
-		    mspm0_finf[mspm0_info->mspm0_info_index].
-		    part_info[mspm0_info->mspm0_part_info_index].partname;
+		    mspm0_finf[mspm0_info->mspm0_info_index].part_info[mspm0_info->
+								       mspm0_part_info_index].
+		    partname;
 
 	command_print_sameline(cmd,
 			       "\nTI MSPM0 information: Chip is "
@@ -378,6 +372,7 @@ static int mspm0_protect_check(struct flash_bank *bank)
 static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int last)
 {
 	LOG_ERROR("%s", __func__);
+
 	return ERROR_OK;
 }
 
@@ -439,7 +434,6 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 static int mspm0_probe(struct flash_bank *bank)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	uint32_t pagesize;
 	int retval;
 	LOG_ERROR("%s", __func__);
 
@@ -463,11 +457,27 @@ static int mspm0_probe(struct flash_bank *bank)
 		free(bank->sectors);
 
 	/* provide this for the benefit of the NOR flash framework */
-	pagesize = (mspm0_info->main_flash_size_kb * 1024) / mspm0_info->main_flash_num_banks;
-	bank->size = (mspm0_info->main_flash_size_kb * 1024);
-	bank->num_sectors = mspm0_info->main_flash_num_banks;
+	switch (bank->base) {
+	case FLASH_BASE_NONMAIN:
+		LOG_ERROR("Need some algorithmic way to figure this out.. I think it is 1 sector long always, but not sure!");
+		return ERROR_FAIL;
+	case FLASH_BASE_MAIN:
+		bank->size = (mspm0_info->main_flash_size_kb * 1024);
+		bank->num_sectors = bank->size / mspm0_info->sector_size;
+		break;
+	case FLASH_BASE_DATA: /* Warning: detected runtime */
+		if (!mspm0_info->data_flash_size_kb) {
+			LOG_ERROR("Data region NOT available!");
+			return ERROR_FAIL;
+		}
+		bank->size = (mspm0_info->main_flash_size_kb * 1024);
+		bank->num_sectors = bank->size / mspm0_info->sector_size;
+		break;
+	default:
+		LOG_ERROR("Invalid bank address " TARGET_ADDR_FMT, bank->base);
+		return ERROR_FAIL;
+	}
 	bank->sectors = calloc(bank->num_sectors, sizeof(struct flash_sector));
-	LOG_INFO("Pagesize = 0x%" PRIx32, pagesize);
 	LOG_INFO("bank->size = 0x%" PRIx32, bank->size);
 	LOG_INFO("bank->num_sectors = 0x%" PRIx32, bank->num_sectors);
 	if (!bank->sectors) {
@@ -475,8 +485,8 @@ static int mspm0_probe(struct flash_bank *bank)
 		return ERROR_FAIL;
 	}
 	for (unsigned int i = 0; i < bank->num_sectors; i++) {
-		bank->sectors[i].offset = i * pagesize;
-		bank->sectors[i].size = pagesize;
+		bank->sectors[i].offset = i * mspm0_info->sector_size;
+		bank->sectors[i].size = mspm0_info->sector_size;
 		bank->sectors[i].is_erased = -1;
 		bank->sectors[i].is_protected = -1;
 		LOG_INFO("[%d]offset = 0x%" PRIx32, i, bank->sectors[i].offset);
