@@ -7158,6 +7158,19 @@ msp432 bsl lock
 @end deffn
 @end deffn
 
+@deffn {Flash Driver} {mspm0}
+All Arm Cortex-M0+ MSPM microcontroller versions from Texas
+Instruments include internal flash. The mspm0 flash driver
+automatically recognizes the specific version's flash parameters and
+autoconfigures itself. The main program flash starts at address 0x0.
+Non-main flash starts at 0x41c00000. If present on the device, the
+optional region called "Data" starts at 0x41d00000.
+
+@example
+flash bank $_FLASHNAME mspm0 0 0 0 0 $_TARGETNAME
+@end example
+@end deffn
+
 @deffn {Flash Driver} {niietcm4}
 This drivers handles the integrated NOR flash on NIIET Cortex-M4
 based controllers. Flash size and sector layout are auto-configured by the driver.
