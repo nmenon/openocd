@@ -232,10 +232,15 @@ FLASH_BANK_COMMAND_HANDLER(mspm0_flash_bank_command)
 {
 	struct mspm0_flash_bank *mspm0_info;
 
+	LOG_ERROR("%s", __func__);
 	if (CMD_ARGC < 6)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
 	mspm0_info = calloc(sizeof(struct mspm0_flash_bank), 1);
+	if (!mspm0_info) {
+		LOG_ERROR("%s: Out of memory for mspm0_info!", __func__);
+		return ERROR_FAIL;
+	}
 	bank->base = 0x0;
 	bank->driver_priv = mspm0_info;
 
@@ -261,6 +266,7 @@ static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cm
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	const char *target_name;
 
+	LOG_ERROR("%s", __func__);
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
@@ -294,6 +300,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	uint8_t variant, version;
 	const struct mspm0_family_info *minfo = NULL;
 
+	LOG_ERROR("%s", __func__);
 	/* Read and parse chip identification register */
 	target_read_u32(target, DID, &did);
 	target_read_u32(target, TRACEID, &mspm0_info->traceid);
@@ -364,17 +371,20 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 
 static int mspm0_protect_check(struct flash_bank *bank)
 {
+	LOG_ERROR("%s", __func__);
 	return ERROR_OK;
 }
 
 static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int last)
 {
+	LOG_ERROR("%s", __func__);
 	return ERROR_OK;
 }
 
 static int mspm0_protect(struct flash_bank *bank, int set,
 			 unsigned int first, unsigned int last)
 {
+	LOG_ERROR("%s", __func__);
 	return ERROR_OK;
 }
 
@@ -422,13 +432,16 @@ static const uint8_t mspm0_write_code[] = {
 static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		       uint32_t offset, uint32_t count)
 {
+	LOG_ERROR("%s", __func__);
 	return ERROR_OK;
 }
 
 static int mspm0_probe(struct flash_bank *bank)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
+	uint32_t pagesize;
 	int retval;
+	LOG_ERROR("%s", __func__);
 
 	/*
 	 * If this is a mspm0 chip, it has flash; probe() is just
@@ -446,11 +459,35 @@ static int mspm0_probe(struct flash_bank *bank)
 	if (retval != ERROR_OK)
 		return retval;
 
+	if (bank->sectors)
+		free(bank->sectors);
+
+	/* provide this for the benefit of the NOR flash framework */
+	pagesize = (mspm0_info->main_flash_size_kb * 1024) / mspm0_info->main_flash_num_banks;
+	bank->size = (mspm0_info->main_flash_size_kb * 1024);
+	bank->num_sectors = mspm0_info->main_flash_num_banks;
+	bank->sectors = calloc(bank->num_sectors, sizeof(struct flash_sector));
+	LOG_INFO("Pagesize = 0x%" PRIx32, pagesize);
+	LOG_INFO("bank->size = 0x%" PRIx32, bank->size);
+	LOG_INFO("bank->num_sectors = 0x%" PRIx32, bank->num_sectors);
+	if (!bank->sectors) {
+		LOG_ERROR("%s: Out of memory for sectors!", __func__);
+		return ERROR_FAIL;
+	}
+	for (unsigned int i = 0; i < bank->num_sectors; i++) {
+		bank->sectors[i].offset = i * pagesize;
+		bank->sectors[i].size = pagesize;
+		bank->sectors[i].is_erased = -1;
+		bank->sectors[i].is_protected = -1;
+		LOG_INFO("[%d]offset = 0x%" PRIx32, i, bank->sectors[i].offset);
+		LOG_INFO("[%d]size = 0x%" PRIx32, i, bank->sectors[i].size);
+	}
 	return retval;
 }
 
 COMMAND_HANDLER(mspm0_handle_mass_erase_command)
 {
+	LOG_ERROR("%s", __func__);
 	if (CMD_ARGC < 1)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
@@ -466,6 +503,7 @@ COMMAND_HANDLER(mspm0_handle_mass_erase_command)
  */
 COMMAND_HANDLER(mspm0_handle_recover_command)
 {
+	LOG_ERROR("%s", __func__);
 	if (CMD_ARGC != 0)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
