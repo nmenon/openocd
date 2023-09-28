@@ -453,14 +453,18 @@ static int mspm0_probe(struct flash_bank *bank)
 	if (retval != ERROR_OK)
 		return retval;
 
-	if (bank->sectors)
+	if (bank->sectors) {
 		free(bank->sectors);
+		bank->sectors = NULL;
+	}
 
 	/* provide this for the benefit of the NOR flash framework */
 	switch (bank->base) {
 	case FLASH_BASE_NONMAIN:
-		LOG_ERROR("Need some algorithmic way to figure this out.. I think it is 1 sector long always, but not sure!");
-		return ERROR_FAIL;
+		LOG_ERROR("TBD: BSL.. Need some algorithmic way to figure this out.. I think it is 1 sector long always, but not sure!");
+		bank->size = 0x0;
+		bank->num_sectors = 0x0;
+		return ERROR_OK;
 	case FLASH_BASE_MAIN:
 		bank->size = (mspm0_info->main_flash_size_kb * 1024);
 		bank->num_sectors = bank->size / mspm0_info->sector_size;
@@ -468,7 +472,9 @@ static int mspm0_probe(struct flash_bank *bank)
 	case FLASH_BASE_DATA: /* Warning: detected runtime */
 		if (!mspm0_info->data_flash_size_kb) {
 			LOG_ERROR("Data region NOT available!");
-			return ERROR_FAIL;
+			bank->size = 0x0;
+			bank->num_sectors = 0x0;
+			return ERROR_OK;
 		}
 		bank->size = (mspm0_info->main_flash_size_kb * 1024);
 		bank->num_sectors = bank->size / mspm0_info->sector_size;
