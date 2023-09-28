@@ -1,0 +1,471 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+/***************************************************************************
+ ***************************************************************************/
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#include "jtag/interface.h"
+#include "imp.h"
+#include <target/algorithm.h>
+#include <target/arm_adi_v5.h>
+#include <target/armv7m.h>
+#include <helper/bits.h>
+
+/* MPM0 FACTORYREGION registers */
+#define FACTORYREGION	0x41c40000
+#define TRACEID		(FACTORYREGION + 0x000)
+#define DID			(FACTORYREGION + 0x004)
+#define USERID		(FACTORYREGION + 0x008)
+#define SRAMFLASH	(FACTORYREGION + 0x018)
+
+#define FLASH_CONTROL_BASE	0x400fd000
+#define FLASH_FMA	(FLASH_CONTROL_BASE | 0x000)
+#define FLASH_FMD	(FLASH_CONTROL_BASE | 0x004)
+#define FLASH_FMC	(FLASH_CONTROL_BASE | 0x008)
+#define FLASH_CRIS	(FLASH_CONTROL_BASE | 0x00c)
+#define FLASH_CIM	(FLASH_CONTROL_BASE | 0x010)
+#define FLASH_MISC	(FLASH_CONTROL_BASE | 0x014)
+#define FLASH_FSIZE	(FLASH_CONTROL_BASE | 0xfc0)
+#define FLASH_SSIZE	(FLASH_CONTROL_BASE | 0xfc4)
+
+#define AMISC	1
+#define PMISC	2
+
+#define AMASK	1
+#define PMASK	2
+
+/* Flash Controller Command bits */
+#define FMC_WRKEY	(0xa442 << 16)
+#define FMC_COMT	(1 << 3)
+#define FMC_MERASE	(1 << 2)
+#define FMC_ERASE	(1 << 1)
+#define FMC_WRITE	(1 << 0)
+
+/* MPM0 constants */
+
+/* values to write in FMA to commit write-"once" values */
+#define FLASH_FMA_PRE(x)	(2 * (x))	/* for FMPPREx */
+#define FLASH_FMA_PPE(x)	(2 * (x) + 1)	/* for FMPPPEx */
+
+#define EXTRACT_VAL(var, h, l) (((var) & GENMASK((h),(l))) >> (l))
+
+struct mspm0_flash_bank {
+	/* chip id register */
+	uint32_t did;
+	/* Device Unique ID register */
+	uint32_t traceid;
+	uint8_t version;
+
+	/* Decoded flash information */
+	uint32_t data_flash_size_kb;
+	uint32_t main_flash_size_kb;
+	uint32_t main_flash_num_banks;
+	/* Decoded SRAM information */
+	uint32_t sram_size_kb;
+
+	/* ID information index */
+	uint8_t mspm0_info_index;
+	uint8_t mspm0_part_info_index;
+
+	uint32_t sramsiz;
+	/* flash geometry */
+	uint32_t num_pages;
+	uint32_t pagesize;
+
+	/* main clock status */
+	uint32_t rcc;
+	uint32_t rcc2;
+	uint8_t mck_valid;
+	uint8_t xtal_mask;
+	uint32_t iosc_freq;
+	uint32_t mck_freq;
+	const char *iosc_desc;
+	const char *mck_desc;
+};
+
+struct mspm0_part_info {
+	const char *partname;
+	uint16_t part;
+	uint8_t variant;
+};
+
+struct mspm0_family_info {
+	uint16_t partnum;
+	uint8_t part_count;
+	const struct mspm0_part_info *part_info;
+};
+
+/* https://www.ti.com/lit/ds/symlink/mspm0l1346.pdf Table 8-13 */
+static const struct mspm0_part_info mspm0l_parts[] = {
+	{ "MSPM0L1303SRGER", 0xef0, 0x17 },
+	{ "MSPM0L1303TRGER", 0xef0, 0xe2 },
+	{ "MSPM0L1304QDGS20R", 0xd717, 0x91 },
+	{ "MSPM0L1304QDGS28R", 0xd717, 0xb6 },
+	{ "MSPM0L1304QDYYR", 0xd717, 0xa0 },
+	{ "MSPM0L1304QRHBR", 0xd717, 0xa9 },
+	{ "MSPM0L1304SDGS20R", 0xd717, 0xfa },
+	{ "MSPM0L1304SDGS28R", 0xd717, 0x73 },
+	{ "MSPM0L1304SDYYR", 0xd717, 0xb7 },
+	{ "MSPM0L1304SRGER", 0xd717, 0x26 },
+	{ "MSPM0L1304SRHBR", 0xd717, 0xe4 },
+	{ "MSPM0L1304TDGS20R", 0xd717, 0x33 },
+	{ "MSPM0L1304TDGS28R", 0xd717, 0xa8 },
+	{ "MSPM0L1304TDYYR", 0xd717, 0xf9 },
+	{ "MSPM0L1304TRGER", 0xd717, 0xb7 },
+	{ "MSPM0L1304TRHBR", 0xd717, 0x5a },
+	{ "MSPM0L1305QDGS20R", 0x4d03, 0xb7 },
+	{ "MSPM0L1305QDGS28R", 0x4d03, 0x74 },
+	{ "MSPM0L1305QDYYR", 0x4d03, 0xec },
+	{ "MSPM0L1305QRHBR", 0x4d03, 0x78 },
+	{ "MSPM0L1305SDGS20R", 0x4d03, 0xc7 },
+	{ "MSPM0L1305SDGS28R", 0x4d03, 0x64 },
+	{ "MSPM0L1305SDYYR", 0x4d03, 0x91 },
+	{ "MSPM0L1305SRGER", 0x4d03, 0x73 },
+	{ "MSPM0L1305SRHBR", 0x4d03, 0x2d },
+	{ "MSPM0L1305TDGS20R", 0x4d03, 0xa0 },
+	{ "MSPM0L1305TDGS28R", 0x4d03, 0xfb },
+	{ "MSPM0L1305TDYYR", 0x4d03, 0xde },
+	{ "MSPM0L1305TRGER", 0x4d03, 0xea },
+	{ "MSPM0L1305TRHBR", 0x4d03, 0x85 },
+	{ "MSPM0L1306QDGS20R", 0xbb70, 0x59 },
+	{ "MSPM0L1306QDGS28R", 0xbb70, 0xf7 },
+	{ "MSPM0L1306QDYYR", 0xbb70, 0x9f },
+	{ "MSPM0L1306QRHBR", 0xbb70, 0xc2 },
+	{ "MSPM0L1306SDGS20R", 0xbb70, 0xf4 },
+	{ "MSPM0L1306SDGS28R", 0xbb70, 0x5 },
+	{ "MSPM0L1306SDYYR", 0xbb70, 0xe },
+	{ "MSPM0L1306SRGER", 0xbb70, 0x7f },
+	{ "MSPM0L1306SRHBR", 0xbb70, 0x3c },
+	{ "MSPM0L1306TDGS20R", 0xbb70, 0xa },
+	{ "MSPM0L1306TDGS28R", 0xbb70, 0x63 },
+	{ "MSPM0L1306TDYYR", 0xbb70, 0x35 },
+	{ "MSPM0L1306TRGER", 0xbb70, 0xaa },
+	{ "MSPM0L1306TRHBR", 0xbb70, 0x52 },
+	{ "MSPM0L1343TDGS20R", 0xb231, 0x2e },
+	{ "MSPM0L1344TDGS20R", 0x40b0, 0xd0 },
+	{ "MSPM0L1345TDGS28R", 0x98b4, 0x74 },
+	{ "MSPM0L1346TDGS28R", 0xf2b5, 0xef },
+};
+
+/* https://www.ti.com/lit/ds/symlink/mspm0g3506.pdf Table 8-20 */
+static const struct mspm0_part_info mspm0g_parts[] = {
+	{ "MSPM0G3505SDGS28R", 0xc504, 0x8e },
+	{ "MSPM0G3505SPMR", 0xc504, 0x1d },
+	{ "MSPM0G3505SPTR", 0xc504, 0x93 },
+	{ "MSPM0G3505SRGZR", 0xc504, 0xc7 },
+	{ "MSPM0G3505SRHBR", 0xc504, 0xe7 },
+	{ "MSPM0G3505TDGS28R", 0xc504, 0xdf },
+	{ "MSPM0G3506SDGS28R", 0x151f, 0x8 },
+	{ "MSPM0G3506SPMR", 0x151f, 0xd4 },
+	{ "MSPM0G3506SPTR", 0x151f, 0x39 },
+	{ "MSPM0G3506SRGZR", 0x151f, 0xfe },
+	{ "MSPM0G3506SRHBR", 0x151f, 0xb5 },
+	{ "MSPM0G3507SDGS28R", 0xae2d, 0xca },
+	{ "MSPM0G3507SPMR", 0xae2d, 0xc7 },
+	{ "MSPM0G3507SPTR", 0xae2d, 0x3f },
+	{ "MSPM0G3507SRGZR", 0xae2d, 0xf7 },
+	{ "MSPM0G3507SRHBR", 0xae2d, 0x4c },
+};
+
+static const struct mspm0_family_info mspm0_finf[] = {
+	{ 0xbb82, ARRAY_SIZE(mspm0l_parts), mspm0l_parts },
+	{ 0xbb88, ARRAY_SIZE(mspm0g_parts), mspm0g_parts },
+};
+
+/***************************************************************************
+*	openocd command interface                                              *
+***************************************************************************/
+
+/* flash_bank mspm0 <base> <size> 0 0 <target#>
+ */
+FLASH_BANK_COMMAND_HANDLER(mspm0_flash_bank_command)
+{
+	struct mspm0_flash_bank *mspm0_info;
+
+	if (CMD_ARGC < 6)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	mspm0_info = calloc(sizeof(struct mspm0_flash_bank), 1);
+	bank->base = 0x0;
+	bank->driver_priv = mspm0_info;
+
+	mspm0_info->mspm0_info_index = 0xff;
+	mspm0_info->mspm0_part_info_index = 0xff;
+
+	/* part wasn't probed for info yet */
+	mspm0_info->did = 0;
+
+	/* TODO Specify the main crystal speed in kHz using an optional
+	 * argument; ditto, the speed of an external oscillator used
+	 * instead of a crystal.  Avoid programming flash using IOSC.
+	 */
+	return ERROR_OK;
+}
+
+/***************************************************************************
+*	chip identification and status                                         *
+***************************************************************************/
+
+static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cmd)
+{
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
+	const char *target_name;
+
+	if (mspm0_info->did == 0)
+		return ERROR_FLASH_BANK_NOT_PROBED;
+
+	if (mspm0_info->mspm0_part_info_index == 0xff)
+		target_name = "Un Identified";
+	else
+		target_name =
+		    mspm0_finf[mspm0_info->mspm0_info_index].
+		    part_info[mspm0_info->mspm0_part_info_index].partname;
+
+	command_print_sameline(cmd,
+			       "\nTI MSPM0 information: Chip is "
+			       "%s rev %d Device Unique ID: %d\n",
+			       target_name, mspm0_info->version, mspm0_info->traceid);
+	command_print_sameline(cmd,
+			       "main flash: %dKb in %d bank(s), sram: %dKb, data flash: %dKb",
+			       mspm0_info->main_flash_size_kb,
+			       mspm0_info->main_flash_num_banks, mspm0_info->sram_size_kb,
+			       mspm0_info->data_flash_size_kb);
+
+	return ERROR_OK;
+}
+
+/* Read device id register, main clock frequency register and fill in driver info structure */
+static int mspm0_read_part_info(struct flash_bank *bank)
+{
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
+	struct target *target = bank->target;
+	uint32_t did, userid, flashram;
+	uint16_t pnum, part;
+	uint8_t variant, version;
+	const struct mspm0_family_info *minfo = NULL;
+
+	/* Read and parse chip identification register */
+	target_read_u32(target, DID, &did);
+	target_read_u32(target, TRACEID, &mspm0_info->traceid);
+	target_read_u32(target, USERID, &userid);
+	target_read_u32(target, SRAMFLASH, &flashram);
+	LOG_DEBUG("did 0x%" PRIx32 ", traceid 0x%" PRIx32 ", userid 0x%" PRIx32
+		  ", flashram 0x%" PRIx32 "", did, mspm0_info->traceid, userid, flashram);
+
+	version = EXTRACT_VAL(did, 31, 28);
+	pnum = EXTRACT_VAL(did, 27, 12);
+	variant = EXTRACT_VAL(userid, 23, 16);
+	part = EXTRACT_VAL(userid, 15, 0);
+	LOG_DEBUG("Part 0x%" PRIx32 ", Part Num 0x%" PRIx32 ", Variant 0x%" PRIx32
+		  ", version 0x%" PRIx32, part, pnum, variant, version);
+
+	/* Valid DIEID? */
+	if ((version != 0) && (version != 1)) {
+		LOG_WARNING("Unknown Device ID version, cannot identify target");
+		return ERROR_FLASH_OPERATION_FAILED;
+	}
+
+	/* Check if we at least know the family of devices */
+	for (int i = 0; i < (int)ARRAY_SIZE(mspm0_finf); i++) {
+		if (mspm0_finf[i].partnum == pnum) {
+			mspm0_info->mspm0_info_index = i;
+			minfo = &mspm0_finf[i];
+			break;
+		}
+	}
+	if (mspm0_info->mspm0_info_index == 0xff) {
+		LOG_WARNING("Unsupported DeviceID[0x%" PRIx32 "], cannot identify target",
+			    pnum);
+		return ERROR_FLASH_OPERATION_FAILED;
+	}
+
+	/* Can we specifically identify the chip */
+	for (int i = 0; i < minfo->part_count; i++) {
+		if (minfo->part_info[i].part == part
+		    && minfo->part_info[i].variant == variant) {
+			mspm0_info->mspm0_part_info_index = i;
+			break;
+		}
+	}
+	if (mspm0_info->mspm0_info_index == 0xff)
+		LOG_WARNING("Unsupported PART[0x%" PRIx32 "]/variant[0x%" PRIx32
+			    "], known DeviceID[0x%" PRIx32 "]. Attempting to proceed.",
+			    part, variant, pnum);
+	else
+		LOG_DEBUG("Part: %s detected",
+			  minfo->part_info[mspm0_info->mspm0_info_index].partname);
+
+	mspm0_info->did = did;
+	mspm0_info->version = version;
+	mspm0_info->data_flash_size_kb = EXTRACT_VAL(flashram, 31, 26);
+	mspm0_info->main_flash_size_kb = EXTRACT_VAL(flashram, 11, 0);
+	mspm0_info->main_flash_num_banks = EXTRACT_VAL(flashram, 13, 12) + 1;
+	mspm0_info->sram_size_kb = EXTRACT_VAL(flashram, 25, 16);
+	LOG_DEBUG("Detected: main flash: %dKb in %d banks, sram: %dKb, data flash: %dKb",
+		  mspm0_info->main_flash_size_kb, mspm0_info->main_flash_num_banks,
+		  mspm0_info->sram_size_kb, mspm0_info->data_flash_size_kb);
+
+	return ERROR_OK;
+}
+
+/***************************************************************************
+*	flash operations                                                       *
+***************************************************************************/
+
+static int mspm0_protect_check(struct flash_bank *bank)
+{
+	return ERROR_OK;
+}
+
+static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int last)
+{
+	return ERROR_OK;
+}
+
+static int mspm0_protect(struct flash_bank *bank, int set,
+			 unsigned int first, unsigned int last)
+{
+	return ERROR_OK;
+}
+
+/* see contrib/loaders/flash/mspm0.s for src */
+
+#if 0
+static const uint8_t mspm0_write_code[] = {
+	/* write: */
+	0xDF, 0xF8, 0x40, 0x40,	/* ldr          r4, pFLASH_CTRL_BASE */
+	0xDF, 0xF8, 0x40, 0x50,	/* ldr          r5, FLASHWRITECMD */
+	/* wait_fifo: */
+	0xD0, 0xF8, 0x00, 0x80,	/* ldr          r8, [r0, #0] */
+	0xB8, 0xF1, 0x00, 0x0F,	/* cmp          r8, #0 */
+	0x17, 0xD0,		/* beq          exit */
+	0x47, 0x68,		/* ldr          r7, [r0, #4] */
+	0x47, 0x45,		/* cmp          r7, r8 */
+	0xF7, 0xD0,		/* beq          wait_fifo */
+	/* mainloop: */
+	0x22, 0x60,		/* str          r2, [r4, #0] */
+	0x02, 0xF1, 0x04, 0x02,	/* add          r2, r2, #4 */
+	0x57, 0xF8, 0x04, 0x8B,	/* ldr          r8, [r7], #4 */
+	0xC4, 0xF8, 0x04, 0x80,	/* str          r8, [r4, #4] */
+	0xA5, 0x60,		/* str          r5, [r4, #8] */
+	/* busy: */
+	0xD4, 0xF8, 0x08, 0x80,	/* ldr          r8, [r4, #8] */
+	0x18, 0xF0, 0x01, 0x0F,	/* tst          r8, #1 */
+	0xFA, 0xD1,		/* bne          busy */
+	0x8F, 0x42,		/* cmp          r7, r1 */
+	0x28, 0xBF,		/* it           cs */
+	0x00, 0xF1, 0x08, 0x07,	/* addcs        r7, r0, #8 */
+	0x47, 0x60,		/* str          r7, [r0, #4] */
+	0x01, 0x3B,		/* subs         r3, r3, #1 */
+	0x03, 0xB1,		/* cbz          r3, exit */
+	0xE2, 0xE7,		/* b            wait_fifo */
+	/* exit: */
+	0x00, 0xBE,		/* bkpt         #0 */
+
+	/* pFLASH_CTRL_BASE: */
+	0x00, 0xD0, 0x0F, 0x40,	/* .word        0x400FD000 */
+	/* FLASHWRITECMD: */
+	0x01, 0x00, 0x42, 0xA4	/* .word        0xA4420001 */
+};
+#endif
+
+static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
+		       uint32_t offset, uint32_t count)
+{
+	return ERROR_OK;
+}
+
+static int mspm0_probe(struct flash_bank *bank)
+{
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
+	int retval;
+
+	/*
+	 * If this is a mspm0 chip, it has flash; probe() is just
+	 * to figure out how much is present.  Only do it once.
+	 */
+	if (mspm0_info->did != 0)
+		return ERROR_OK;
+
+	/*
+	 * mspm0_read_part_info() already handled error checking and
+	 * reporting.  Note that it doesn't write, so we don't care about
+	 * whether the target is halted or not.
+	 */
+	retval = mspm0_read_part_info(bank);
+	if (retval != ERROR_OK)
+		return retval;
+
+	return retval;
+}
+
+COMMAND_HANDLER(mspm0_handle_mass_erase_command)
+{
+	if (CMD_ARGC < 1)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	return ERROR_OK;
+}
+
+/**
+ * Perform the MSPM0 "Recovering a 'Locked' Device procedure.
+ * This performs a mass erase and then restores all nonvolatile registers
+ * (including USER_* registers and flash lock bits) to their defaults.
+ * Accordingly, flash can be reprogrammed, and JTAG can be used.
+ *
+ */
+COMMAND_HANDLER(mspm0_handle_recover_command)
+{
+	if (CMD_ARGC != 0)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	return ERROR_OK;
+}
+
+static const struct command_registration mspm0_exec_command_handlers[] = {
+	{
+	 .name = "mass_erase",
+	 .usage = "<bank>",
+	 .handler = mspm0_handle_mass_erase_command,
+	 .mode = COMMAND_EXEC,
+	 .help = "erase entire device",
+	  },
+	{
+	 .name = "recover",
+	 .handler = mspm0_handle_recover_command,
+	 .mode = COMMAND_EXEC,
+	 .usage = "",
+	 .help = "recover (and erase) locked device",
+	  },
+	COMMAND_REGISTRATION_DONE
+};
+
+static const struct command_registration mspm0_command_handlers[] = {
+	{
+	 .name = "mspm0",
+	 .mode = COMMAND_EXEC,
+	 .help = "MSPM0 flash command group",
+	 .usage = "",
+	 .chain = mspm0_exec_command_handlers,
+	  },
+	COMMAND_REGISTRATION_DONE
+};
+
+const struct flash_driver mspm0_flash = {
+	.name = "mspm0",
+	.commands = mspm0_command_handlers,
+	.flash_bank_command = mspm0_flash_bank_command,
+	.erase = mspm0_erase,
+	.protect = mspm0_protect,
+	.write = mspm0_write,
+	.read = default_flash_read,
+	.probe = mspm0_probe,
+	.auto_probe = mspm0_probe,
+	.erase_check = default_flash_blank_check,
+	.protect_check = mspm0_protect_check,
+	.info = get_mspm0_info,
+	.free_driver_priv = default_flash_free_driver_priv,
+};
