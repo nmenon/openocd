@@ -88,6 +88,8 @@
 #define FCTL_REG_STATADDR		(FLASH_CONTROL_BASE + 0x13D4)
 #define FCTL_REG_STATPCNT		(FLASH_CONTROL_BASE + 0x13D8)
 
+#define MAX_PROTECT_REGION_REGS   3
+
 /* Extract a bitfield helper */
 #define EXTRACT_VAL(var, h, l) (((var) & GENMASK((h),(l))) >> (l))
 
@@ -111,6 +113,10 @@ struct mspm0_flash_bank {
 	/* ID information index */
 	uint8_t mspm0_info_index;
 	uint8_t mspm0_part_info_index;
+
+	/* Protection register stuff */
+	uint32_t protect_reg_base;
+	uint32_t protect_reg_count;
 };
 
 struct mspm0_part_info {
@@ -259,11 +265,11 @@ FLASH_BANK_COMMAND_HANDLER(mspm0_flash_bank_command)
 {
 	struct mspm0_flash_bank *mspm0_info;
 
-	LOG_ERROR("%s", __func__);
+	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 	switch (bank->base) {
 	case FLASH_BASE_NONMAIN:
 	case FLASH_BASE_MAIN:
-	case FLASH_BASE_DATA: /* Warning: detected runtime */
+	case FLASH_BASE_DATA:	/* Warning: detected runtime */
 		break;
 	default:
 		LOG_ERROR("Invalid bank address " TARGET_ADDR_FMT, bank->base);
@@ -294,7 +300,7 @@ static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cm
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	const char *target_name;
 
-	LOG_ERROR("%s", __func__);
+	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
@@ -329,7 +335,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	uint8_t variant, version;
 	const struct mspm0_family_info *minfo = NULL;
 
-	LOG_ERROR("%s", __func__);
+	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 	/* Read and parse chip identification register */
 	target_read_u32(target, DID, &did);
 	target_read_u32(target, TRACEID, &mspm0_info->traceid);
@@ -398,28 +404,42 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 *	flash operations                                                       *
 ***************************************************************************/
 
+/*
+ * XXX TODO: Dynamic Write Protection  - we just support ALL ON or OFF
+ * The logic involved for Bankwise mapping is a little too convoluted at
+ * the moment
+ */
 static int mspm0_protect_check(struct flash_bank *bank)
 {
-	uint32_t reg;
-	//struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	struct target *target = bank->target;
-	LOG_ERROR("%s", __func__);
-	target_read_u32(target, FCTL_REG_CMDWEPROTA, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTA 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CMDWEPROTB, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTB 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CMDWEPROTC, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTC 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CMDWEPROTNM, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTNM 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CFGPCNT, &reg);
-	LOG_ERROR("FCTL_REG_CFGPCNT 0x%" PRIx32, reg);
-	return ERROR_OK;
-}
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
+	uint32_t protect_reg_cache[MAX_PROTECT_REGION_REGS];
+	unsigned int i;
 
-static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int last)
-{
-	LOG_ERROR("%s", __func__);
+	if (mspm0_info->did == 0)
+		return ERROR_FLASH_BANK_NOT_PROBED;
+
+	for (i = 0; i < bank->num_sectors; i++)
+		bank->sectors[i].is_protected = -1;
+
+	if (!mspm0_info->protect_reg_count)
+		return ERROR_OK;
+
+	/* Do a single scan read of regs before we set the status */
+	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+		target_read_u32(target,
+				mspm0_info->protect_reg_base + (i * 4),
+				&protect_reg_cache[i]);
+	}
+
+	/*
+	 * XXX: we should do a proper elaboration of bank wise mapping
+	 * to PROT register
+	 * Just make a decision based on a single register at the moment.
+	 */
+	for (i = 0; i < bank->num_sectors; i++) {
+		bank->sectors[i].is_protected = protect_reg_cache[0] == 0 ? 0 : 1;
+	}
 
 	return ERROR_OK;
 }
@@ -427,20 +447,50 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 static int mspm0_protect(struct flash_bank *bank, int set,
 			 unsigned int first, unsigned int last)
 {
-	uint32_t reg;
-	//struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	struct target *target = bank->target;
-	LOG_ERROR("%s", __func__);
-	target_read_u32(target, FCTL_REG_CMDWEPROTA, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTA 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CMDWEPROTB, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTB 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CMDWEPROTC, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTC 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CMDWEPROTNM, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTNM 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CFGPCNT, &reg);
-	LOG_ERROR("FCTL_REG_CFGPCNT 0x%" PRIx32, reg);
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
+	uint32_t protect_reg_cache;
+	unsigned int i;
+
+	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+
+	if (mspm0_info->did == 0)
+		return ERROR_FLASH_BANK_NOT_PROBED;
+
+	if (!mspm0_info->protect_reg_count)
+		return ERROR_OK;
+
+	if (first != 0 || last < (bank->num_sectors - 1)) {
+		LOG_ERROR("TOBE DONE: Support for protection of intermediate size");
+		return ERROR_FAIL;
+	}
+
+	/*
+	 * XXX: we should do a proper elaboration of bank wise mapping
+	 * to PROT register
+	 * Just make Global decision at this point.
+	 */
+	if (set)
+		protect_reg_cache = 0xFFFFFFFF;
+	else
+		protect_reg_cache = 0x0;
+
+	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+		target_write_u32(target,
+				 mspm0_info->protect_reg_base + (i * 4),
+				 protect_reg_cache);
+	}
+
+	for (i = 0; i < bank->num_sectors; i++)
+		bank->sectors[i].is_protected = set;
+
+	return ERROR_OK;
+}
+
+static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int last)
+{
+	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	LOG_ERROR("%d - %d", first, last);
 
 	return ERROR_OK;
 }
@@ -489,17 +539,15 @@ static const uint8_t mspm0_write_code[] = {
 static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		       uint32_t offset, uint32_t count)
 {
-	LOG_ERROR("%s", __func__);
+	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 	return ERROR_OK;
 }
 
 static int mspm0_probe(struct flash_bank *bank)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	struct target *target = bank->target;
 	int retval;
-	uint32_t reg;
-	LOG_ERROR("%s", __func__);
+	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 
 	/*
 	 * If this is a mspm0 chip, it has flash; probe() is just
@@ -527,12 +575,16 @@ static int mspm0_probe(struct flash_bank *bank)
 	case FLASH_BASE_NONMAIN:
 		bank->size = 512;
 		bank->num_sectors = 0x1;
-		return ERROR_OK;
+		mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTNM;
+		mspm0_info->protect_reg_count = 1;
+		break;
 	case FLASH_BASE_MAIN:
 		bank->size = (mspm0_info->main_flash_size_kb * 1024);
 		bank->num_sectors = bank->size / mspm0_info->sector_size;
+		mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTA;
+		mspm0_info->protect_reg_count = 3;
 		break;
-	case FLASH_BASE_DATA: /* Warning: detected runtime */
+	case FLASH_BASE_DATA:	/* Warning: detected runtime */
 		if (!mspm0_info->data_flash_size_kb) {
 			LOG_ERROR("Data region NOT available!");
 			bank->size = 0x0;
@@ -547,8 +599,6 @@ static int mspm0_probe(struct flash_bank *bank)
 		return ERROR_FAIL;
 	}
 	bank->sectors = calloc(bank->num_sectors, sizeof(struct flash_sector));
-	LOG_INFO("bank->size = 0x%" PRIx32, bank->size);
-	LOG_INFO("bank->num_sectors = 0x%" PRIx32, bank->num_sectors);
 	if (!bank->sectors) {
 		LOG_ERROR("%s: Out of memory for sectors!", __func__);
 		return ERROR_FAIL;
@@ -557,28 +607,17 @@ static int mspm0_probe(struct flash_bank *bank)
 		bank->sectors[i].offset = i * mspm0_info->sector_size;
 		bank->sectors[i].size = mspm0_info->sector_size;
 		bank->sectors[i].is_erased = -1;
-		bank->sectors[i].is_protected = -1;
-		LOG_INFO("[%d]offset = 0x%" PRIx32, i, bank->sectors[i].offset);
-		LOG_INFO("[%d]size = 0x%" PRIx32, i, bank->sectors[i].size);
 	}
-	LOG_ERROR("%s", __func__);
-	target_read_u32(target, FCTL_REG_CMDWEPROTA, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTA 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CMDWEPROTB, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTB 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CMDWEPROTC, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTC 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CMDWEPROTNM, &reg);
-	LOG_ERROR("FCTL_REG_CMDWEPROTNM 0x%" PRIx32, reg);
-	target_read_u32(target, FCTL_REG_CFGPCNT, &reg);
-	LOG_ERROR("FCTL_REG_CFGPCNT 0x%" PRIx32, reg);
+
+	/* Update with protection information */
+	retval = mspm0_protect_check(bank);
 
 	return retval;
 }
 
 COMMAND_HANDLER(mspm0_handle_mass_erase_command)
 {
-	LOG_ERROR("%s", __func__);
+	LOG_ERROR("%s ", __func__);
 	if (CMD_ARGC < 1)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
@@ -594,7 +633,7 @@ COMMAND_HANDLER(mspm0_handle_mass_erase_command)
  */
 COMMAND_HANDLER(mspm0_handle_recover_command)
 {
-	LOG_ERROR("%s", __func__);
+	LOG_ERROR("%s ", __func__);
 	if (CMD_ARGC != 0)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 

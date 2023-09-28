@@ -1969,9 +1969,9 @@ static int gdb_memory_map(struct connection *connection,
 			/* Maybe start a new group of sectors. */
 			if (sector_size == 0) {
 				if (p->sectors[j].offset + p->sectors[j].size > p->size) {
-					LOG_WARNING("The flash sector at offset 0x%08" PRIx32
-						" overflows the end of %s bank.",
-						p->sectors[j].offset, p->name);
+					LOG_WARNING("[%d]The flash sector at offset 0x%08" PRIx32
+						" overflows the end of %s bank. 0x%08" PRIx32 " .. 0x%08" PRIx32,j,
+						p->sectors[j].offset, p->name, p->sectors[j].size, p->size);
 					LOG_WARNING("The rest of bank will not show in gdb memory map.");
 					break;
 				}
