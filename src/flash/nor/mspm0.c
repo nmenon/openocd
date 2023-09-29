@@ -404,18 +404,96 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 *	flash operations                                                       *
 ***************************************************************************/
 
-/*
- * XXX TODO: Dynamic Write Protection  - we just support ALL ON or OFF
- * The logic involved for Bankwise mapping is a little too convoluted at
- * the moment
- */
+static int mspm0_protect_reg_mainmap(struct flash_bank *bank, uint32_t sector,
+					uint32_t * protect_reg_offset,
+					uint32_t * protect_reg_bit)
+{
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
+	uint32_t bank_size, sector_in_bank;
+
+	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	if (sector < 32) {
+		*protect_reg_offset = 0;
+		*protect_reg_bit = sector % 32;
+		return ERROR_OK;
+	}
+
+	bank_size = mspm0_info->main_flash_size_kb / mspm0_info->main_flash_num_banks;
+	sector_in_bank = sector & (bank_size - 1);
+
+	if (sector_in_bank < 256) {
+		*protect_reg_offset = 1;
+		if (mspm0_info->main_flash_num_banks == 1)
+			*protect_reg_bit = BIT((sector_in_bank - 32) / 8);
+		else
+			*protect_reg_bit = BIT((sector_in_bank) / 8);
+		return ERROR_OK;
+	}
+
+	if (sector_in_bank >= 512) {
+		LOG_ERROR("Invalid sector_in_bank %d at bank " TARGET_ADDR_FMT,
+			  sector_in_bank, bank->base);
+		return ERROR_FAIL;
+	}
+	*protect_reg_offset = 2;
+	*protect_reg_bit = BIT((sector_in_bank - 256) / 8);
+	return ERROR_OK;
+}
+
+static int mspm0_protect_reg_map(struct flash_bank *bank, uint32_t sector,
+				 uint32_t * protect_reg_offset,
+				 uint32_t * protect_reg_bit)
+{
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
+
+	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	switch (bank->base) {
+	case FLASH_BASE_NONMAIN:
+		*protect_reg_offset = sector / 32;
+		*protect_reg_bit = sector % 32;
+		break;
+	case FLASH_BASE_MAIN:
+		int retval;
+		retval =
+		    mspm0_protect_reg_mainmap(bank, sector, protect_reg_offset,
+						 protect_reg_bit);
+		if (retval)
+			return retval;
+		break;
+	case FLASH_BASE_DATA:
+		LOG_ERROR("Bank protection not available " TARGET_ADDR_FMT, bank->base);
+		return ERROR_FAIL;
+		break;
+	default:
+		LOG_ERROR("Invalid bank address " TARGET_ADDR_FMT, bank->base);
+		return ERROR_FAIL;
+	}
+
+	/* Basic sanity checks */
+	if (*protect_reg_offset >= mspm0_info->protect_reg_count) {
+		LOG_ERROR("sector %d address overflows protection regs: " TARGET_ADDR_FMT,
+			  sector, bank->base);
+		return ERROR_FAIL;
+	}
+	if (*protect_reg_bit >= 32) {
+		LOG_ERROR
+		    ("sector %d address causes driver algo error for reg bit %d on bank: "
+		     TARGET_ADDR_FMT, sector, *protect_reg_bit, bank->base);
+		return ERROR_FAIL;
+	}
+
+	return ERROR_OK;
+}
+
 static int mspm0_protect_check(struct flash_bank *bank)
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	uint32_t protect_reg_cache[MAX_PROTECT_REGION_REGS];
+	uint32_t protect_reg_offset, protect_reg_bit;
 	unsigned int i;
 
+	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
@@ -432,13 +510,15 @@ static int mspm0_protect_check(struct flash_bank *bank)
 				&protect_reg_cache[i]);
 	}
 
-	/*
-	 * XXX: we should do a proper elaboration of bank wise mapping
-	 * to PROT register
-	 * Just make a decision based on a single register at the moment.
-	 */
 	for (i = 0; i < bank->num_sectors; i++) {
-		bank->sectors[i].is_protected = protect_reg_cache[0] == 0 ? 0 : 1;
+		int retval =
+		    mspm0_protect_reg_map(bank, i, &protect_reg_offset, &protect_reg_bit);
+		if (retval) {
+			bank->sectors[i].is_protected = -1;
+			continue;
+		}
+		bank->sectors[i].is_protected =
+		    protect_reg_cache[protect_reg_offset] & BIT(protect_reg_bit);
 	}
 
 	return ERROR_OK;
@@ -449,8 +529,10 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	uint32_t protect_reg_cache;
+	uint32_t protect_reg_cache[MAX_PROTECT_REGION_REGS];
+	uint32_t protect_reg_offset, protect_reg_bit;
 	unsigned int i;
+	int retval;
 
 	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 
@@ -460,29 +542,54 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 	if (!mspm0_info->protect_reg_count)
 		return ERROR_OK;
 
-	if (first != 0 || last < (bank->num_sectors - 1)) {
-		LOG_ERROR("TOBE DONE: Support for protection of intermediate size");
-		return ERROR_FAIL;
-	}
-
 	/*
-	 * XXX: we should do a proper elaboration of bank wise mapping
-	 * to PROT register
-	 * Just make Global decision at this point.
+	 * Don't trust the protection status set in bank->sectors[i].is_protected
+	 * Driver might have changed the flash protection scheme.
+	 * So, just rescan and update
 	 */
-	if (set)
-		protect_reg_cache = 0xFFFFFFFF;
-	else
-		protect_reg_cache = 0x0;
+
+	/* Do a single scan read of regs before we set the status */
+	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+		target_read_u32(target,
+				mspm0_info->protect_reg_base + (i * 4),
+				&protect_reg_cache[i]);
+	}
+	/* Flip set to binary value */
+	set = !!set;
+	/* Now set the bits that we need to set with */
+	for (i = first; i <= last; i++) {
+		retval =
+		    mspm0_protect_reg_map(bank, i, &protect_reg_offset, &protect_reg_bit);
+
+		/* Don't proceed unless all OK */
+		if (retval)
+			return retval;
+		if (set)
+			protect_reg_cache[protect_reg_offset] |= BIT(protect_reg_bit);
+		else
+			protect_reg_cache[protect_reg_offset] &= ~BIT(protect_reg_bit);
+	}
 
 	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
 		target_write_u32(target,
 				 mspm0_info->protect_reg_base + (i * 4),
-				 protect_reg_cache);
+				 protect_reg_cache[i]);
 	}
 
-	for (i = 0; i < bank->num_sectors; i++)
-		bank->sectors[i].is_protected = set;
+	/*
+	 * Update our local state data base, since single bit can protect up to
+	 * 8 sectors in some banks
+	 */
+	for (i = 0; i < bank->num_sectors; i++) {
+		retval =
+		    mspm0_protect_reg_map(bank, i, &protect_reg_offset, &protect_reg_bit);
+		if (retval) {
+			bank->sectors[i].is_protected = -1;
+			continue;
+		}
+		bank->sectors[i].is_protected =
+		    protect_reg_cache[protect_reg_offset] & BIT(protect_reg_bit);
+	}
 
 	return ERROR_OK;
 }
@@ -593,6 +700,7 @@ static int mspm0_probe(struct flash_bank *bank)
 		}
 		bank->size = (mspm0_info->main_flash_size_kb * 1024);
 		bank->num_sectors = bank->size / mspm0_info->sector_size;
+		bank->num_prot_blocks = 0; /* There is no protection here */
 		break;
 	default:
 		LOG_ERROR("Invalid bank address " TARGET_ADDR_FMT, bank->base);
