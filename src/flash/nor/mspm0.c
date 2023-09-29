@@ -412,7 +412,7 @@ FLASH_BANK_COMMAND_HANDLER(mspm0_flash_bank_command)
 {
 	struct mspm0_flash_bank *mspm0_info;
 
-	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	//LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 	switch (bank->base) {
 	case FLASH_BASE_NONMAIN:
 	case FLASH_BASE_MAIN:
@@ -447,7 +447,7 @@ static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cm
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	const char *target_name;
 
-	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	//LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
@@ -481,7 +481,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	uint8_t variant, version;
 	const struct mspm0_family_info *minfo = NULL;
 
-	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	//LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 	/* Read and parse chip identification register */
 	target_read_u32(target, DID, &did);
 	target_read_u32(target, TRACEID, &mspm0_info->traceid);
@@ -569,6 +569,7 @@ const struct {
 	{ 12, "FAILMISC" },
 };
 
+#if 0
 static void msmp0_dump_prot_regs(struct flash_bank *bank)
 {
 	struct target *target = bank->target;
@@ -585,6 +586,7 @@ static void msmp0_dump_prot_regs(struct flash_bank *bank)
 	target_read_u32(target, FCTL_REG_CFGPCNT, &reg);
 	LOG_ERROR("FCTL_REG_CFGPCNT 0x%" PRIx32, reg);
 }
+#endif
 
 static void msmp0_fctl_translate_ret_err(uint32_t return_code, char *ret_str)
 {
@@ -646,7 +648,7 @@ static int mspm0_protect_reg_mainmap(struct flash_bank *bank, uint32_t sector,
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	uint32_t bank_size, sector_in_bank;
 
-	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	//LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 	if (sector < 32) {
 		*protect_reg_offset = 0;
 		*protect_reg_bit = sector % 32;
@@ -681,7 +683,7 @@ static int mspm0_protect_reg_map(struct flash_bank *bank, uint32_t sector,
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 
-	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	//LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 	switch (bank->base) {
 	case FLASH_BASE_NONMAIN:
 		*protect_reg_offset = sector / 32;
@@ -728,7 +730,7 @@ static int mspm0_protect_check(struct flash_bank *bank)
 	uint32_t protect_reg_offset, protect_reg_bit;
 	unsigned int i;
 
-	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	//LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
@@ -769,7 +771,7 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 	unsigned int i;
 	int retval;
 
-	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	//LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
@@ -836,8 +838,8 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	unsigned int i;
 	uint32_t protect_reg_cache[MAX_PROTECT_REGION_REGS];
 
-	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
-	LOG_ERROR("%d - %d", first, last);
+	//LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	//LOG_ERROR("%d - %d", first, last);
 
 	/* Don't want driver to mess with programming */
 	if (bank->target->state != TARGET_HALTED) {
@@ -866,22 +868,22 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 		int retval;
 		uint32_t addr = csa * mspm0_info->sector_size;
 
-		LOG_INFO("Attempt sector 0x%" PRIx32 ": 0x%" PRIx32 ": 0x%08"
-			 PRIx32, mspm0_info->sector_size, csa, addr);
+		//LOG_INFO("Attempt sector 0x%" PRIx32 ": 0x%" PRIx32 ": 0x%08"
+			 //PRIx32, mspm0_info->sector_size, csa, addr);
 
 		target_write_u32(target, FCTL_REG_CMDTYPE,
 				 (FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR));
 		target_write_u32(target, FCTL_REG_CMDADDR, addr);
 		target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
 		retval = msmp0_fctl_wait_cmd_ok(bank);
-		msmp0_dump_prot_regs(bank);
+		//msmp0_dump_prot_regs(bank);
 		if (retval) {
 			LOG_ERROR("Failed Erasing at address 0x%08" PRIx32
 				  "(sector: %d)", addr, csa);
 			return retval;
 		}
-		LOG_INFO("Success Erasing at address 0x%08" PRIx32 "(sector: %d)",
-			 addr, csa);
+		//LOG_INFO("Success Erasing at address 0x%08" PRIx32 "(sector: %d)",
+		//	 addr, csa);
 		/*
 		 * TRM Says:
 		 * Note that the CMDWEPROTx registers are reset to a protected state
@@ -951,7 +953,7 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 	uint32_t protect_reg_cache[MAX_PROTECT_REGION_REGS];
 	uint32_t first_sec, last_sec;
 
-	LOG_ERROR("%s " TARGET_ADDR_FMT ": Write to 0x%08" PRIx32 " 0x%08" PRIx32, __func__, bank->base, offset, count);
+	//LOG_ERROR("%s " TARGET_ADDR_FMT ": Write to 0x%08" PRIx32 " 0x%08" PRIx32, __func__, bank->base, offset, count);
 
 	/*
 	 * XXX: TRM Says:
@@ -989,7 +991,7 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 				&protect_reg_cache[i]);
 	}
 	if (offset % mspm0_info->flash_word_size_bytes) {
-		LOG_ERROR("Offset 0x%0"PRIx32 " Must be aligned to %d bytes", offset, mspm0_info->flash_word_size_bytes);
+		//LOG_ERROR("Offset 0x%0"PRIx32 " Must be aligned to %d bytes", offset, mspm0_info->flash_word_size_bytes);
 		return ERROR_FLASH_DST_BREAKS_ALIGNMENT;
 	}
 	while (count) {
@@ -1017,22 +1019,22 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		target_write_u32(target, FCTL_REG_CMDADDR, offset);
 		//LOG_ERROR("writing to offset 0x%0"PRIx32 " Writing %d bytes, pending %d bytes", offset, num_bytes_to_write, count - num_bytes_to_write);
 
-		offset +=num_bytes_to_write;
-		count -= num_bytes_to_write;
 
 		/* When writing to part of flash_word - set the bitfields */
-		if (align == 1)
-			target_write_u32(target, FCTL_REG_CMDBYTEN, num_bytes_to_write - 1);
+		target_write_u32(target, FCTL_REG_CMDBYTEN, num_bytes_to_write - 1);
 
 		while (num_bytes_to_write) {
 			uint32_t data_to_write;
 			uint32_t sub_count;
 			data_to_write = *((uint32_t *)buffer);
 			target_write_u32(target, data_reg, data_to_write);
+			LOG_ERROR("0x%"PRIx32 "(D reg 0x%"PRIx32") <- 0x%" PRIx32, offset, data_reg, data_to_write);
 			sub_count = (num_bytes_to_write < sizeof(uint32_t))? num_bytes_to_write: 4;
 			buffer += sub_count;
 			data_reg += sub_count;
 			num_bytes_to_write -= sub_count;
+			offset +=sub_count;
+			count -= sub_count;
 		}
 
 		target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
@@ -1040,7 +1042,7 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		retval = msmp0_fctl_wait_cmd_ok(bank);
 		if (retval)
 			return retval;
-		//LOG_ERROR("OK");
+		LOG_ERROR("OK");
 		/*
 		 * TRM Says:
 		 * Note that the CMDWEPROTx registers are reset to a protected state
@@ -1065,7 +1067,7 @@ static int mspm0_probe(struct flash_bank *bank)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	int retval;
-	LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
+	//LOG_ERROR("%s " TARGET_ADDR_FMT, __func__, bank->base);
 
 	/*
 	 * If this is a mspm0 chip, it has flash; probe() is just
@@ -1136,7 +1138,7 @@ static int mspm0_probe(struct flash_bank *bank)
 
 COMMAND_HANDLER(mspm0_handle_mass_erase_command)
 {
-	LOG_ERROR("%s ", __func__);
+	//LOG_ERROR("%s ", __func__);
 	if (CMD_ARGC < 1)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
@@ -1152,7 +1154,7 @@ COMMAND_HANDLER(mspm0_handle_mass_erase_command)
  */
 COMMAND_HANDLER(mspm0_handle_recover_command)
 {
-	LOG_ERROR("%s ", __func__);
+	//LOG_ERROR("%s ", __func__);
 	if (CMD_ARGC != 0)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
