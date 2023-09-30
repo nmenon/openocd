@@ -455,8 +455,9 @@ static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cm
 		target_name = "Un Identified";
 	else
 		target_name =
-		    mspm0_finf[mspm0_info->mspm0_info_index].
-		    part_info[mspm0_info->mspm0_part_info_index].partname;
+		    mspm0_finf[mspm0_info->mspm0_info_index].part_info[mspm0_info->
+								       mspm0_part_info_index].
+		    partname;
 
 	command_print_sameline(cmd,
 			       "\nTI MSPM0 information: Chip is "
@@ -869,7 +870,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 		uint32_t addr = csa * mspm0_info->sector_size;
 
 		//LOG_INFO("Attempt sector 0x%" PRIx32 ": 0x%" PRIx32 ": 0x%08"
-			 //PRIx32, mspm0_info->sector_size, csa, addr);
+		//PRIx32, mspm0_info->sector_size, csa, addr);
 
 		target_write_u32(target, FCTL_REG_CMDTYPE,
 				 (FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR));
@@ -883,7 +884,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 			return retval;
 		}
 		//LOG_INFO("Success Erasing at address 0x%08" PRIx32 "(sector: %d)",
-		//	 addr, csa);
+		//       addr, csa);
 		/*
 		 * TRM Says:
 		 * Note that the CMDWEPROTx registers are reset to a protected state
@@ -974,7 +975,6 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
-
 	first_sec = offset / mspm0_info->sector_size;
 	last_sec = (offset + count) / mspm0_info->sector_size;
 	for (i = first_sec; i <= last_sec; i++) {
@@ -1007,7 +1007,10 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		 * NOTE: we are going to assume the device does not support multi-word
 		 * programming - there does not seem to be discoverability!
 		 */
-		align = count % mspm0_info->flash_word_size_bytes ? 1: mspm0_info->flash_word_size_bytes;
+		align =
+		    count %
+		    mspm0_info->flash_word_size_bytes ? 1 : mspm0_info->
+		    flash_word_size_bytes;
 		if (align == 1) {
 			num_bytes_to_write = count % mspm0_info->flash_word_size_bytes;
 		} else {
@@ -1015,10 +1018,10 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		}
 
 		target_write_u32(target, FCTL_REG_CMDTYPE,
-				 (FCTL_CMDTYPE_COMMAND_PROGRAM | FCTL_CMDTYPE_SIZE_ONEWORD));
+				 (FCTL_CMDTYPE_COMMAND_PROGRAM |
+				  FCTL_CMDTYPE_SIZE_ONEWORD));
 		target_write_u32(target, FCTL_REG_CMDADDR, offset);
 		//LOG_ERROR("writing to offset 0x%0"PRIx32 " Writing %d bytes, pending %d bytes", offset, num_bytes_to_write, count - num_bytes_to_write);
-
 
 		/* When writing to part of flash_word - set the bitfields */
 		target_write_u32(target, FCTL_REG_CMDBYTEN, num_bytes_to_write - 1);
@@ -1026,14 +1029,17 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		while (num_bytes_to_write) {
 			uint32_t data_to_write;
 			uint32_t sub_count;
-			data_to_write = *((uint32_t *)buffer);
+			data_to_write = *((uint32_t *) buffer);
 			target_write_u32(target, data_reg, data_to_write);
-			LOG_ERROR("0x%"PRIx32 "(D reg 0x%"PRIx32") <- 0x%" PRIx32, offset, data_reg, data_to_write);
-			sub_count = (num_bytes_to_write < sizeof(uint32_t))? num_bytes_to_write: 4;
+			LOG_ERROR("0x%" PRIx32 "(D reg 0x%" PRIx32 ") <- 0x%" PRIx32,
+				  offset, data_reg, data_to_write);
+			sub_count =
+			    (num_bytes_to_write <
+			     sizeof(uint32_t)) ? num_bytes_to_write : 4;
 			buffer += sub_count;
 			data_reg += sub_count;
 			num_bytes_to_write -= sub_count;
-			offset +=sub_count;
+			offset += sub_count;
 			count -= sub_count;
 		}
 
@@ -1058,7 +1064,6 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 					 protect_reg_cache[i]);
 		}
 	}
-
 
 	return ERROR_OK;
 }
