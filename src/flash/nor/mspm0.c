@@ -1024,15 +1024,16 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		//LOG_ERROR("writing to offset 0x%0"PRIx32 " Writing %d bytes, pending %d bytes", offset, num_bytes_to_write, count - num_bytes_to_write);
 
 		/* When writing to part of flash_word - set the bitfields */
-		target_write_u32(target, FCTL_REG_CMDBYTEN, num_bytes_to_write - 1);
+		target_write_u32(target, FCTL_REG_CMDBYTEN, (1<< num_bytes_to_write) - 1);
+		//LOG_ERROR("BYTEEN=0x%" PRIx32, (1<<num_bytes_to_write) -1 );
 
 		while (num_bytes_to_write) {
 			uint32_t data_to_write;
 			uint32_t sub_count;
 			data_to_write = *((uint32_t *) buffer);
 			target_write_u32(target, data_reg, data_to_write);
-			LOG_ERROR("0x%" PRIx32 "(D reg 0x%" PRIx32 ") <- 0x%" PRIx32,
-				  offset, data_reg, data_to_write);
+			//LOG_ERROR("0x%" PRIx32 "(D reg 0x%" PRIx32 ") <- 0x%" PRIx32,
+			//	  offset, data_reg, data_to_write);
 			sub_count =
 			    (num_bytes_to_write <
 			     sizeof(uint32_t)) ? num_bytes_to_write : 4;
@@ -1048,7 +1049,7 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		retval = msmp0_fctl_wait_cmd_ok(bank);
 		if (retval)
 			return retval;
-		LOG_ERROR("OK");
+		//LOG_ERROR("OK");
 		/*
 		 * TRM Says:
 		 * Note that the CMDWEPROTx registers are reset to a protected state
