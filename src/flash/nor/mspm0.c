@@ -17,218 +17,51 @@
 #include <helper/bits.h>
 #include <helper/time_support.h>
 
-/* MPM0 FACTORYREGION registers */
-#define FACTORYREGION			0x41c40000
-#define TRACEID					(FACTORYREGION + 0x000)
-#define DID						(FACTORYREGION + 0x004)
-#define USERID					(FACTORYREGION + 0x008)
-#define SRAMFLASH				(FACTORYREGION + 0x018)
+/* MPM0 MSPM0_FACTORYREGION registers */
+#define MSPM0_FACTORYREGION		0x41c40000
+#define MSPM0_TRACEID			(MSPM0_FACTORYREGION + 0x000)
+#define MSPM0_DID				(MSPM0_FACTORYREGION + 0x004)
+#define MSPM0_USERID			(MSPM0_FACTORYREGION + 0x008)
+#define MSPM0_SRAMFLASH			(MSPM0_FACTORYREGION + 0x018)
 
-#define FLASH_BASE_NONMAIN		(0x41c00000)
-#define FLASH_BASE_MAIN			(0x0)
-#define FLASH_BASE_DATA			(0x41d00000)
+#define MSPM0_FLASH_BASE_NONMAIN		(0x41c00000)
+#define MSPM0_FLASH_BASE_MAIN			(0x0)
+#define MSPM0_FLASH_BASE_DATA			(0x41d00000)
 
 /* MPM0 FCTL registers */
 #define FLASH_CONTROL_BASE		(0x400cd000U)
-#define FCTL_REG_IIDX			(FLASH_CONTROL_BASE + 0x1020)
-#define FCTL_REG_IMASK			(FLASH_CONTROL_BASE + 0x1028)
-#define FCTL_REG_RIS			(FLASH_CONTROL_BASE + 0x1030)
-#define FCTL_REG_MIS			(FLASH_CONTROL_BASE + 0x1038)
-#define FCTL_REG_ISET			(FLASH_CONTROL_BASE + 0x1040)
-#define FCTL_REG_ICLR			(FLASH_CONTROL_BASE + 0x1048)
 #define FCTL_REG_CMDEXEC		(FLASH_CONTROL_BASE + 0x1100)
 #define FCTL_REG_CMDTYPE		(FLASH_CONTROL_BASE + 0x1104)
-#define FCTL_REG_CMDCTL			(FLASH_CONTROL_BASE + 0x1108)
 #define FCTL_REG_CMDADDR		(FLASH_CONTROL_BASE + 0x1120)
 #define FCTL_REG_CMDBYTEN		(FLASH_CONTROL_BASE + 0x1124)
-#define FCTL_REG_CMDDATAINDEX	(FLASH_CONTROL_BASE + 0x112C)
 #define FCTL_REG_CMDDATA0		(FLASH_CONTROL_BASE + 0x1130)
-#define FCTL_REG_CMDDATA1		(FLASH_CONTROL_BASE + 0x1134)
-#define FCTL_REG_CMDDATA2		(FLASH_CONTROL_BASE + 0x1138)
-#define FCTL_REG_CMDDATA3		(FLASH_CONTROL_BASE + 0x113C)
-#define FCTL_REG_CMDDATA4		(FLASH_CONTROL_BASE + 0x1140)
-#define FCTL_REG_CMDDATA5		(FLASH_CONTROL_BASE + 0x1144)
-#define FCTL_REG_CMDDATA6		(FLASH_CONTROL_BASE + 0x1148)
-#define FCTL_REG_CMDDATA7		(FLASH_CONTROL_BASE + 0x114C)
-#define FCTL_REG_CMDDATA8		(FLASH_CONTROL_BASE + 0x1150)
-#define FCTL_REG_CMDDATA9		(FLASH_CONTROL_BASE + 0x1154)
-#define FCTL_REG_CMDDATA10		(FLASH_CONTROL_BASE + 0x1158)
-#define FCTL_REG_CMDDATA11		(FLASH_CONTROL_BASE + 0x115C)
-#define FCTL_REG_CMDDATA12		(FLASH_CONTROL_BASE + 0x1160)
-#define FCTL_REG_CMDDATA13		(FLASH_CONTROL_BASE + 0x1164)
-#define FCTL_REG_CMDDATA14		(FLASH_CONTROL_BASE + 0x1168)
-#define FCTL_REG_CMDDATA15		(FLASH_CONTROL_BASE + 0x116C)
-#define FCTL_REG_CMDDATA16		(FLASH_CONTROL_BASE + 0x1170)
-#define FCTL_REG_CMDDATA17		(FLASH_CONTROL_BASE + 0x1174)
-#define FCTL_REG_CMDDATA18		(FLASH_CONTROL_BASE + 0x1178)
-#define FCTL_REG_CMDDATA19		(FLASH_CONTROL_BASE + 0x117C)
-#define FCTL_REG_CMDDATA20		(FLASH_CONTROL_BASE + 0x1180)
-#define FCTL_REG_CMDDATA21		(FLASH_CONTROL_BASE + 0x1184)
-#define FCTL_REG_CMDDATA22		(FLASH_CONTROL_BASE + 0x1188)
-#define FCTL_REG_CMDDATA23		(FLASH_CONTROL_BASE + 0x118C)
-#define FCTL_REG_CMDDATA24		(FLASH_CONTROL_BASE + 0x1190)
-#define FCTL_REG_CMDDATA25		(FLASH_CONTROL_BASE + 0x1194)
-#define FCTL_REG_CMDDATA26		(FLASH_CONTROL_BASE + 0x1198)
-#define FCTL_REG_CMDDATA27		(FLASH_CONTROL_BASE + 0x119C)
-#define FCTL_REG_CMDDATA28		(FLASH_CONTROL_BASE + 0x11A0)
-#define FCTL_REG_CMDDATA29		(FLASH_CONTROL_BASE + 0x11A4)
-#define FCTL_REG_CMDDATA30		(FLASH_CONTROL_BASE + 0x11A8)
-#define FCTL_REG_CMDDATA31		(FLASH_CONTROL_BASE + 0x11AC)
-#define FCTL_REG_CMDDATAECC0	(FLASH_CONTROL_BASE + 0x11B0)
-#define FCTL_REG_CMDDATAECC1	(FLASH_CONTROL_BASE + 0x11B4)
-#define FCTL_REG_CMDDATAECC2	(FLASH_CONTROL_BASE + 0x11B8)
-#define FCTL_REG_CMDDATAECC3	(FLASH_CONTROL_BASE + 0x11BC)
-#define FCTL_REG_CMDDATAECC4	(FLASH_CONTROL_BASE + 0x11C0)
-#define FCTL_REG_CMDDATAECC5	(FLASH_CONTROL_BASE + 0x11C4)
-#define FCTL_REG_CMDDATAECC6	(FLASH_CONTROL_BASE + 0x11C8)
-#define FCTL_REG_CMDDATAECC7	(FLASH_CONTROL_BASE + 0x11CC)
 #define FCTL_REG_CMDWEPROTA		(FLASH_CONTROL_BASE + 0x11D0)
-#define FCTL_REG_CMDWEPROTB		(FLASH_CONTROL_BASE + 0x11D4)
-#define FCTL_REG_CMDWEPROTC		(FLASH_CONTROL_BASE + 0x11D8)
 #define FCTL_REG_CMDWEPROTNM	(FLASH_CONTROL_BASE + 0x1210)
-#define FCTL_REG_CFGPCNT		(FLASH_CONTROL_BASE + 0x13B4)
 #define FCTL_REG_STATCMD		(FLASH_CONTROL_BASE + 0x13D0)
-#define FCTL_REG_STATADDR		(FLASH_CONTROL_BASE + 0x13D4)
-#define FCTL_REG_STATPCNT		(FLASH_CONTROL_BASE + 0x13D8)
 
-/* FCTL_STATCMD Bits */
 /* FCTL_STATCMD[CMDDONE] Bits */
-#define FCTL_STATCMD_CMDDONE_OFS             (0)
 #define FCTL_STATCMD_CMDDONE_MASK            (0x00000001U)
-#define FCTL_STATCMD_CMDDONE_STATNOTDONE     (0x00000000U)
 #define FCTL_STATCMD_CMDDONE_STATDONE        (0x00000001U)
+
 /* FCTL_STATCMD[CMDPASS] Bits */
-#define FCTL_STATCMD_CMDPASS_OFS             (1)
 #define FCTL_STATCMD_CMDPASS_MASK            (0x00000002U)
-
-#define FCTL_STATCMD_CMDPASS_STATFAIL        (0x00000000U)
 #define FCTL_STATCMD_CMDPASS_STATPASS        (0x00000002U)
-/* FCTL_STATCMD[CMDINPROGRESS] Bits */
-#define FCTL_STATCMD_CMDINPROGRESS_OFS       (2)
-#define FCTL_STATCMD_CMDINPROGRESS_MASK      (0x00000004U)
-#define FCTL_STATCMD_CMDINPROGRESS_STATCOMPLETE (0x00000000U)
-#define FCTL_STATCMD_CMDINPROGRESS_STATINPROGRESS (0x00000004U)
-/* FCTL_STATCMD[FAILWEPROT] Bits */
-#define FCTL_STATCMD_FAILWEPROT_OFS          (4)
-#define FCTL_STATCMD_FAILWEPROT_MASK         (0x00000010U)
-
-#define FCTL_STATCMD_FAILWEPROT_STATNOFAIL   (0x00000000U)
-#define FCTL_STATCMD_FAILWEPROT_STATFAIL     (0x00000010U)
-/* FCTL_STATCMD[FAILVERIFY] Bits */
-#define FCTL_STATCMD_FAILVERIFY_OFS          (5)
-#define FCTL_STATCMD_FAILVERIFY_MASK         (0x00000020U)
-#define FCTL_STATCMD_FAILVERIFY_STATNOFAIL   (0x00000000U)
-#define FCTL_STATCMD_FAILVERIFY_STATFAIL     (0x00000020U)
-/* FCTL_STATCMD[FAILMISC] Bits */
-#define FCTL_STATCMD_FAILMISC_OFS            (12)
-#define FCTL_STATCMD_FAILMISC_MASK           (0x00001000U)
-
-#define FCTL_STATCMD_FAILMISC_STATNOFAIL     (0x00000000U)
-#define FCTL_STATCMD_FAILMISC_STATFAIL       (0x00001000U)
-/* FCTL_STATCMD[FAILILLADDR] Bits */
-#define FCTL_STATCMD_FAILILLADDR_OFS         (6)
-#define FCTL_STATCMD_FAILILLADDR_MASK        (0x00000040U)
-
-#define FCTL_STATCMD_FAILILLADDR_STATNOFAIL  (0x00000000U)
-#define FCTL_STATCMD_FAILILLADDR_STATFAIL    (0x00000040U)
-/* FCTL_STATCMD[FAILMODE] Bits */
-#define FCTL_STATCMD_FAILMODE_OFS            (7)
-#define FCTL_STATCMD_FAILMODE_MASK           (0x00000080U)
-
-#define FCTL_STATCMD_FAILMODE_STATNOFAIL     (0x00000000U)
-#define FCTL_STATCMD_FAILMODE_STATFAIL       (0x00000080U)
-/* FCTL_STATCMD[FAILINVDATA] Bits */
-#define FCTL_STATCMD_FAILINVDATA_OFS         (8)
-#define FCTL_STATCMD_FAILINVDATA_MASK        (0x00000100U)
-
-#define FCTL_STATCMD_FAILINVDATA_STATNOFAIL  (0x00000000U)
-#define FCTL_STATCMD_FAILINVDATA_STATFAIL    (0x00000100U)
 
 /* FCTL_CMDEXEC Bits */
 /* FCTL_CMDEXEC[VAL] Bits */
-#define FCTL_CMDEXEC_VAL_OFS                 (0)
-#define FCTL_CMDEXEC_VAL_MASK                (0x00000001U)
-#define FCTL_CMDEXEC_VAL_NOEXECUTE           (0x00000000U)
 #define FCTL_CMDEXEC_VAL_EXECUTE             (0x00000001U)
 
-/* FCTL_CMDTYPE Bits */
 /* FCTL_CMDTYPE[COMMAND] Bits */
-#define FCTL_CMDTYPE_COMMAND_OFS             (0)
-#define FCTL_CMDTYPE_COMMAND_MASK            (0x00000007U)
-#define FCTL_CMDTYPE_COMMAND_NOOP            (0x00000000U)
 #define FCTL_CMDTYPE_COMMAND_PROGRAM         (0x00000001U)
 #define FCTL_CMDTYPE_COMMAND_ERASE           (0x00000002U)
-#define FCTL_CMDTYPE_COMMAND_READVERIFY      (0x00000003U)
-
-#define FCTL_CMDTYPE_COMMAND_MODECHANGE      (0x00000004U)
-
-#define FCTL_CMDTYPE_COMMAND_CLEARSTATUS     (0x00000005U)
-
-#define FCTL_CMDTYPE_COMMAND_BLANKVERIFY     (0x00000006U)
 
 /* FCTL_CMDTYPE[SIZE] Bits */
-#define FCTL_CMDTYPE_SIZE_OFS                (4)
-#define FCTL_CMDTYPE_SIZE_MASK               (0x00000070U)
 #define FCTL_CMDTYPE_SIZE_ONEWORD            (0x00000000U)
-#define FCTL_CMDTYPE_SIZE_TWOWORD            (0x00000010U)
-#define FCTL_CMDTYPE_SIZE_FOURWORD           (0x00000020U)
-#define FCTL_CMDTYPE_SIZE_EIGHTWORD          (0x00000030U)
 #define FCTL_CMDTYPE_SIZE_SECTOR             (0x00000040U)
-#define FCTL_CMDTYPE_SIZE_BANK               (0x00000050U)
-/* FCTL_CMDCTL Bits */
-/* FCTL_CMDCTL[MODESEL] Bits */
-#define FCTL_CMDCTL_MODESEL_OFS              (0)
-#define FCTL_CMDCTL_MODESEL_MASK             (0x0000000FU)
-#define FCTL_CMDCTL_MODESEL_READ             (0x00000000U)
-#define FCTL_CMDCTL_MODESEL_RDMARG0          (0x00000002U)
-#define FCTL_CMDCTL_MODESEL_RDMARG1          (0x00000004U)
-#define FCTL_CMDCTL_MODESEL_RDMARG0B         (0x00000006U)
-#define FCTL_CMDCTL_MODESEL_RDMARG1B         (0x00000007U)
-#define FCTL_CMDCTL_MODESEL_PGMVER           (0x00000009U)
-#define FCTL_CMDCTL_MODESEL_PGMSW            (0x0000000AU)
-#define FCTL_CMDCTL_MODESEL_ERASEVER         (0x0000000BU)
-#define FCTL_CMDCTL_MODESEL_ERASESECT        (0x0000000CU)
-#define FCTL_CMDCTL_MODESEL_PGMMW            (0x0000000EU)
-#define FCTL_CMDCTL_MODESEL_ERASEBNK         (0x0000000FU)
-/* FCTL_CMDCTL[BANKSEL] Bits */
-#define FCTL_CMDCTL_BANKSEL_OFS              (4)
-#define FCTL_CMDCTL_BANKSEL_MASK             (0x000001F0U)
-#define FCTL_CMDCTL_BANKSEL_BANK0            (0x00000010U)
-#define FCTL_CMDCTL_BANKSEL_BANK1            (0x00000020U)
-#define FCTL_CMDCTL_BANKSEL_BANK2            (0x00000040U)
-#define FCTL_CMDCTL_BANKSEL_BANK3            (0x00000080U)
-#define FCTL_CMDCTL_BANKSEL_BANK4            (0x00000100U)
-/* FCTL_CMDCTL[REGIONSEL] Bits */
-#define FCTL_CMDCTL_REGIONSEL_OFS            (9)
-#define FCTL_CMDCTL_REGIONSEL_MASK           (0x00001E00U)
-#define FCTL_CMDCTL_REGIONSEL_MAIN           (0x00000200U)
-#define FCTL_CMDCTL_REGIONSEL_NONMAIN        (0x00000400U)
-#define FCTL_CMDCTL_REGIONSEL_TRIM           (0x00000800U)
-#define FCTL_CMDCTL_REGIONSEL_ENGR           (0x00001000U)
-/* FCTL_CMDCTL[ECCGENOVR] Bits */
-#define FCTL_CMDCTL_ECCGENOVR_OFS            (17)
-#define FCTL_CMDCTL_ECCGENOVR_MASK           (0x00020000U)
-#define FCTL_CMDCTL_ECCGENOVR_NOOVERRIDE     (0x00000000U)
-#define FCTL_CMDCTL_ECCGENOVR_OVERRIDE       (0x00020000U)
-/* FCTL_CMDCTL[ADDRXLATEOVR] Bits */
-#define FCTL_CMDCTL_ADDRXLATEOVR_OFS         (16)
-#define FCTL_CMDCTL_ADDRXLATEOVR_MASK        (0x00010000U)
-#define FCTL_CMDCTL_ADDRXLATEOVR_NOOVERRIDE  (0x00000000U)
-#define FCTL_CMDCTL_ADDRXLATEOVR_OVERRIDE    (0x00010000U)
-/* FCTL_CMDCTL[SSERASEDIS] Bits */
-#define FCTL_CMDCTL_SSERASEDIS_OFS           (20)
-#define FCTL_CMDCTL_SSERASEDIS_MASK          (0x00100000U)
-#define FCTL_CMDCTL_SSERASEDIS_ENABLE        (0x00000000U)
-#define FCTL_CMDCTL_SSERASEDIS_DISABLE       (0x00100000U)
-/* FCTL_CMDCTL[DATAVEREN] Bits */
-#define FCTL_CMDCTL_DATAVEREN_OFS            (21)
-#define FCTL_CMDCTL_DATAVEREN_MASK           (0x00200000U)
-#define FCTL_CMDCTL_DATAVEREN_DISABLE        (0x00000000U)
-#define FCTL_CMDCTL_DATAVEREN_ENABLE         (0x00200000U)
 
-#define MAX_PROTECT_REGION_REGS   3
+#define MSPM0_MAX_PROTREGS   3
 
-#define FLASH_TIMEOUT_MS 8000
+#define MSPM0_FLASH_TIMEOUT_MS 8000
 #define ERR_STRING_MAX 255
 
 /* Extract a bitfield helper */
@@ -413,9 +246,9 @@ FLASH_BANK_COMMAND_HANDLER(mspm0_flash_bank_command)
 	struct mspm0_flash_bank *mspm0_info;
 
 	switch (bank->base) {
-	case FLASH_BASE_NONMAIN:
-	case FLASH_BASE_MAIN:
-	case FLASH_BASE_DATA:
+	case MSPM0_FLASH_BASE_NONMAIN:
+	case MSPM0_FLASH_BASE_MAIN:
+	case MSPM0_FLASH_BASE_DATA:
 		break;
 	default:
 		LOG_ERROR("Invalid bank address " TARGET_ADDR_FMT, bank->base);
@@ -452,8 +285,9 @@ static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cm
 		target_name = "Un Identified";
 	else
 		target_name =
-		    mspm0_finf[mspm0_info->mspm0_info_index].
-		    part_info[mspm0_info->mspm0_part_info_index].partname;
+		    mspm0_finf[mspm0_info->mspm0_info_index].part_info[mspm0_info->
+								       mspm0_part_info_index].
+		    partname;
 
 	command_print_sameline(cmd,
 			       "\nTI MSPM0 information: Chip is "
@@ -478,10 +312,10 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	const struct mspm0_family_info *minfo = NULL;
 
 	/* Read and parse chip identification register */
-	target_read_u32(target, DID, &did);
-	target_read_u32(target, TRACEID, &mspm0_info->traceid);
-	target_read_u32(target, USERID, &userid);
-	target_read_u32(target, SRAMFLASH, &flashram);
+	target_read_u32(target, MSPM0_DID, &did);
+	target_read_u32(target, MSPM0_TRACEID, &mspm0_info->traceid);
+	target_read_u32(target, MSPM0_USERID, &userid);
+	target_read_u32(target, MSPM0_SRAMFLASH, &flashram);
 	LOG_DEBUG("did 0x%" PRIx32 ", traceid 0x%" PRIx32 ", userid 0x%" PRIx32
 		  ", flashram 0x%" PRIx32 "", did, mspm0_info->traceid, userid, flashram);
 
@@ -528,8 +362,9 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 			    part, variant, pnum);
 	else
 		LOG_DEBUG("Part: %s detected",
-			  mspm0_finf[mspm0_info->mspm0_info_index].
-			  part_info[mspm0_info->mspm0_part_info_index].partname);
+			  mspm0_finf[mspm0_info->mspm0_info_index].part_info[mspm0_info->
+									     mspm0_part_info_index].
+			  partname);
 
 	mspm0_info->did = did;
 	mspm0_info->version = version;
@@ -596,7 +431,7 @@ static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 		elapsed_ms = timeval_ms() - start_ms;
 		if (elapsed_ms > 500)
 			keep_alive();
-		if (elapsed_ms > FLASH_TIMEOUT_MS)
+		if (elapsed_ms > MSPM0_FLASH_TIMEOUT_MS)
 			break;
 	}
 
@@ -660,11 +495,11 @@ static int mspm0_protect_reg_map(struct flash_bank *bank, uint32_t sector,
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 
 	switch (bank->base) {
-	case FLASH_BASE_NONMAIN:
+	case MSPM0_FLASH_BASE_NONMAIN:
 		*protect_reg_offset = sector / 32;
 		*protect_reg_bit = sector % 32;
 		break;
-	case FLASH_BASE_MAIN:
+	case MSPM0_FLASH_BASE_MAIN:
 		int retval;
 		retval =
 		    mspm0_protect_reg_mainmap(bank, sector, protect_reg_offset,
@@ -672,7 +507,7 @@ static int mspm0_protect_reg_map(struct flash_bank *bank, uint32_t sector,
 		if (retval)
 			return retval;
 		break;
-	case FLASH_BASE_DATA:
+	case MSPM0_FLASH_BASE_DATA:
 		LOG_ERROR("Bank protection not available " TARGET_ADDR_FMT, bank->base);
 		return ERROR_FAIL;
 		break;
@@ -701,7 +536,7 @@ static int mspm0_protect_check(struct flash_bank *bank)
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	uint32_t protect_reg_cache[MAX_PROTECT_REGION_REGS];
+	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 	uint32_t protect_reg_offset, protect_reg_bit;
 	unsigned int i;
 
@@ -740,7 +575,7 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	uint32_t protect_reg_cache[MAX_PROTECT_REGION_REGS];
+	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 	uint32_t protect_reg_offset, protect_reg_bit;
 	unsigned int i;
 	int retval;
@@ -808,7 +643,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int i;
-	uint32_t protect_reg_cache[MAX_PROTECT_REGION_REGS];
+	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 
 	if (bank->target->state != TARGET_HALTED) {
 		LOG_ERROR("Please halt target for erasing flash");
@@ -871,7 +706,7 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int i;
-	uint32_t protect_reg_cache[MAX_PROTECT_REGION_REGS];
+	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 	uint32_t first_sec, last_sec;
 
 	/*
@@ -1009,21 +844,20 @@ static int mspm0_probe(struct flash_bank *bank)
 		bank->sectors = NULL;
 	}
 
-	/* provide this for the benefit of the NOR flash framework */
 	switch (bank->base) {
-	case FLASH_BASE_NONMAIN:
+	case MSPM0_FLASH_BASE_NONMAIN:
 		bank->size = 512;
 		bank->num_sectors = 0x1;
 		mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTNM;
 		mspm0_info->protect_reg_count = 1;
 		break;
-	case FLASH_BASE_MAIN:
+	case MSPM0_FLASH_BASE_MAIN:
 		bank->size = (mspm0_info->main_flash_size_kb * 1024);
 		bank->num_sectors = bank->size / mspm0_info->sector_size;
 		mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTA;
 		mspm0_info->protect_reg_count = 3;
 		break;
-	case FLASH_BASE_DATA:	/* Warning: detected runtime */
+	case MSPM0_FLASH_BASE_DATA:	/* Warning: detected runtime */
 		if (!mspm0_info->data_flash_size_kb) {
 			LOG_ERROR("Data region NOT available!");
 			bank->size = 0x0;
