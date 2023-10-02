@@ -452,9 +452,8 @@ static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cm
 		target_name = "Un Identified";
 	else
 		target_name =
-		    mspm0_finf[mspm0_info->mspm0_info_index].part_info[mspm0_info->
-								       mspm0_part_info_index].
-		    partname;
+		    mspm0_finf[mspm0_info->mspm0_info_index].
+		    part_info[mspm0_info->mspm0_part_info_index].partname;
 
 	command_print_sameline(cmd,
 			       "\nTI MSPM0 information: Chip is "
@@ -529,9 +528,8 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 			    part, variant, pnum);
 	else
 		LOG_DEBUG("Part: %s detected",
-			  mspm0_finf[mspm0_info->mspm0_info_index].part_info[mspm0_info->
-									     mspm0_part_info_index].
-			  partname);
+			  mspm0_finf[mspm0_info->mspm0_info_index].
+			  part_info[mspm0_info->mspm0_part_info_index].partname);
 
 	mspm0_info->did = did;
 	mspm0_info->version = version;
@@ -895,7 +893,8 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
 	if (offset % mspm0_info->flash_word_size_bytes) {
-		LOG_ERROR("Offset 0x%0"PRIx32 " Must be aligned to %d bytes", offset, mspm0_info->flash_word_size_bytes);
+		LOG_ERROR("Offset 0x%0" PRIx32 " Must be aligned to %d bytes", offset,
+			  mspm0_info->flash_word_size_bytes);
 		return ERROR_FLASH_DST_BREAKS_ALIGNMENT;
 	}
 
@@ -918,8 +917,8 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 				mspm0_info->protect_reg_base + (i * 4),
 				&protect_reg_cache[i]);
 	}
+
 	while (count) {
-		uint32_t align;
 		uint32_t num_bytes_to_write;
 		uint32_t data_reg = FCTL_REG_CMDDATA0;
 		int retval;
@@ -931,11 +930,7 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		 * NOTE: we are going to assume the device does not support multi-word
 		 * programming - there does not seem to be discoverability!
 		 */
-		align =
-		    count %
-		    mspm0_info->flash_word_size_bytes ? 1 : mspm0_info->
-		    flash_word_size_bytes;
-		if (align == 1) {
+		if (count < mspm0_info->flash_word_size_bytes) {
 			num_bytes_to_write = count % mspm0_info->flash_word_size_bytes;
 		} else {
 			num_bytes_to_write = mspm0_info->flash_word_size_bytes;
@@ -946,14 +941,14 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 				  FCTL_CMDTYPE_SIZE_ONEWORD));
 		target_write_u32(target, FCTL_REG_CMDADDR, offset);
 
-		/* When writing to part of flash_word - set the bitfields */
-		target_write_u32(target, FCTL_REG_CMDBYTEN, (1<< num_bytes_to_write) - 1);
+		/* When writing to part of flash_word - set the bit fields */
+		target_write_u32(target, FCTL_REG_CMDBYTEN,
+				 (1 << num_bytes_to_write) - 1);
 
 		while (num_bytes_to_write) {
-			uint32_t data_to_write;
 			uint32_t sub_count;
-			data_to_write = *((uint32_t *) buffer);
-			target_write_u32(target, data_reg, data_to_write);
+
+			target_write_u32(target, data_reg, *((uint32_t *) buffer));
 			sub_count =
 			    (num_bytes_to_write <
 			     sizeof(uint32_t)) ? num_bytes_to_write : 4;
@@ -1060,61 +1055,8 @@ static int mspm0_probe(struct flash_bank *bank)
 	return retval;
 }
 
-COMMAND_HANDLER(mspm0_handle_mass_erase_command)
-{
-	if (CMD_ARGC < 1)
-		return ERROR_COMMAND_SYNTAX_ERROR;
-
-	return ERROR_OK;
-}
-
-/**
- * Perform the MSPM0 "Recovering a 'Locked' Device procedure.
- * This performs a mass erase and then restores all nonvolatile registers
- * (including USER_* registers and flash lock bits) to their defaults.
- * Accordingly, flash can be reprogrammed, and JTAG can be used.
- *
- */
-COMMAND_HANDLER(mspm0_handle_recover_command)
-{
-	if (CMD_ARGC != 0)
-		return ERROR_COMMAND_SYNTAX_ERROR;
-
-	return ERROR_OK;
-}
-
-static const struct command_registration mspm0_exec_command_handlers[] = {
-	{
-	 .name = "mass_erase",
-	 .usage = "<bank>",
-	 .handler = mspm0_handle_mass_erase_command,
-	 .mode = COMMAND_EXEC,
-	 .help = "erase entire device",
-	  },
-	{
-	 .name = "recover",
-	 .handler = mspm0_handle_recover_command,
-	 .mode = COMMAND_EXEC,
-	 .usage = "",
-	 .help = "recover (and erase) locked device",
-	  },
-	COMMAND_REGISTRATION_DONE
-};
-
-static const struct command_registration mspm0_command_handlers[] = {
-	{
-	 .name = "mspm0",
-	 .mode = COMMAND_EXEC,
-	 .help = "MSPM0 flash command group",
-	 .usage = "",
-	 .chain = mspm0_exec_command_handlers,
-	  },
-	COMMAND_REGISTRATION_DONE
-};
-
 const struct flash_driver mspm0_flash = {
 	.name = "mspm0",
-	.commands = mspm0_command_handlers,
 	.flash_bank_command = mspm0_flash_bank_command,
 	.erase = mspm0_erase,
 	.protect = mspm0_protect,
