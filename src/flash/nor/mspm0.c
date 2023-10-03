@@ -13,7 +13,10 @@
 #include "config.h"
 #endif
 
+#include "jtag/interface.h"
 #include "imp.h"
+#include <target/arm_adi_v5.h>
+#include <target/armv7m.h>
 #include <helper/bits.h>
 #include <helper/time_support.h>
 
@@ -900,8 +903,101 @@ static int mspm0_probe(struct flash_bank *bank)
 	return retval;
 }
 
+/**
+ * Perform the MSPM0 "Recovering a 'Locked' Device procedure.
+ * This performs a mass erase and then restores all nonvolatile registers
+ * (including USER_* registers and flash lock bits) to their defaults.
+ * Accordingly, flash can be reprogrammed, and JTAG can be used.
+ */
+COMMAND_HANDLER(mspm0_handle_recover_command)
+{
+	struct flash_bank *bank;
+	struct arm *arm;
+	int retval;
+
+	if (CMD_ARGC != 0)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	bank = get_flash_bank_by_num_noprobe(0);
+	if (!bank)
+		return ERROR_FAIL;
+
+	/*
+	 * REVISIT ... it may be worth sanity checking that the AP is
+	 * inactive before we start.  ARM documents that switching a DP's
+	 * mode while it's active can cause fault modes that need a power
+	 * cycle to recover.
+	 */
+
+	Jim_Eval_Named(CMD_CTX->interp, "catch { hla_command \"debug unlock\" }", NULL, 0);
+	if (!strcmp(Jim_GetString(Jim_GetResult(CMD_CTX->interp), NULL), "0")) {
+		retval = ERROR_OK;
+		goto user_action;
+	}
+
+	/* assert SRST */
+	if (!(jtag_get_reset_config() & RESET_HAS_SRST)) {
+		LOG_ERROR("Can't recover MSPM0 flash without SRST");
+		return ERROR_FAIL;
+	}
+	adapter_assert_reset();
+
+	arm = target_to_arm(bank->target);
+	for (int i = 0; i < 5; i++) {
+		retval = dap_to_swd(arm->dap);
+		if (retval != ERROR_OK)
+			goto done;
+
+		retval = dap_to_jtag(arm->dap);
+		if (retval != ERROR_OK)
+			goto done;
+	}
+
+	/* de-assert SRST */
+	adapter_deassert_reset();
+
+	/* This is where we will have to send messages over SEC-AP */
+	LOG_ERROR("NOT IMPLEMENTED: RECOVERY SEQUENCE OVER SEC-AP");
+
+	/* wait 400+ msec ... OK, "1+ second" is simpler */
+	usleep(1000);
+	goto done;
+
+user_action:
+	/* USER INTERVENTION required for the power cycle
+	 * Restarting OpenOCD is likely needed because of mode switching.
+	 */
+	LOG_INFO("USER ACTION:  "
+		"power cycle MSPM0 chip, then restart OpenOCD.");
+
+done:
+	return retval;
+}
+
+static const struct command_registration mspm0_exec_command_handlers[] = {
+	{
+		.name = "recover",
+		.handler = mspm0_handle_recover_command,
+		.mode = COMMAND_EXEC,
+		.usage = "",
+		.help = "recover (and erase) locked device",
+	},
+	COMMAND_REGISTRATION_DONE
+};
+static const struct command_registration mspm0_command_handlers[] = {
+	{
+		.name = "mspm0",
+		.mode = COMMAND_EXEC,
+		.help = "MSPM0 flash command group",
+		.usage = "",
+		.chain = mspm0_exec_command_handlers,
+	},
+	COMMAND_REGISTRATION_DONE
+};
+
 const struct flash_driver mspm0_flash = {
 	.name = "mspm0",
+	.commands = mspm0_command_handlers,
 	.flash_bank_command = mspm0_flash_bank_command,
 	.erase = mspm0_erase,
 	.protect = mspm0_protect,
