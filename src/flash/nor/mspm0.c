@@ -492,6 +492,7 @@ static int mspm0_protect_reg_map(struct flash_bank *bank, uint32_t sector,
 				 uint32_t * protect_reg_offset,
 				 uint32_t * protect_reg_bit)
 {
+	int retval;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 
 	switch (bank->base) {
@@ -500,7 +501,6 @@ static int mspm0_protect_reg_map(struct flash_bank *bank, uint32_t sector,
 		*protect_reg_bit = sector % 32;
 		break;
 	case MSPM0_FLASH_BASE_MAIN:
-		int retval;
 		retval =
 		    mspm0_protect_reg_mainmap(bank, sector, protect_reg_offset,
 					      protect_reg_bit);
