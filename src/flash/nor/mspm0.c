@@ -76,6 +76,9 @@ struct mspm0_flash_bank {
 	uint32_t traceid;
 	uint8_t version;
 
+	/* Pointer to name */
+	const char *name;
+
 	/* Decoded flash information */
 	uint32_t data_flash_size_kb;
 	uint32_t main_flash_size_kb;
@@ -105,6 +108,7 @@ struct mspm0_part_info {
 };
 
 struct mspm0_family_info {
+	const char *familyname;
 	uint16_t partnum;
 	uint8_t part_count;
 	const struct mspm0_part_info *part_info;
@@ -230,8 +234,8 @@ static const struct mspm0_part_info mspm0g_parts[] = {
 };
 
 static const struct mspm0_family_info mspm0_finf[] = {
-	{ 0xbb82, ARRAY_SIZE(mspm0l_parts), mspm0l_parts },
-	{ 0xbb88, ARRAY_SIZE(mspm0g_parts), mspm0g_parts },
+	{ "MSPM0L", 0xbb82, ARRAY_SIZE(mspm0l_parts), mspm0l_parts },
+	{ "MSPM0G", 0xbb88, ARRAY_SIZE(mspm0g_parts), mspm0g_parts },
 };
 
 /*
@@ -276,23 +280,15 @@ FLASH_BANK_COMMAND_HANDLER(mspm0_flash_bank_command)
 static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cmd)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	const char *target_name;
 
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
-	if (mspm0_info->mspm0_part_info_index == 0xff)
-		target_name = "Un Identified";
-	else
-		target_name =
-		    mspm0_finf[mspm0_info->mspm0_info_index].part_info[mspm0_info->
-								       mspm0_part_info_index].
-		    partname;
-
 	command_print_sameline(cmd,
 			       "\nTI MSPM0 information: Chip is "
 			       "%s rev %d Device Unique ID: %d\n",
-			       target_name, mspm0_info->version, mspm0_info->traceid);
+			       mspm0_info->name, mspm0_info->version,
+			       mspm0_info->traceid);
 	command_print_sameline(cmd,
 			       "main flash: %dKb in %d bank(s), sram: %dKb, data flash: %dKb",
 			       mspm0_info->main_flash_size_kb,
@@ -316,19 +312,19 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	target_read_u32(target, MSPM0_TRACEID, &mspm0_info->traceid);
 	target_read_u32(target, MSPM0_USERID, &userid);
 	target_read_u32(target, MSPM0_SRAMFLASH, &flashram);
-	LOG_DEBUG("did 0x%" PRIx32 ", traceid 0x%" PRIx32 ", userid 0x%" PRIx32
-		  ", flashram 0x%" PRIx32 "", did, mspm0_info->traceid, userid, flashram);
 
 	version = EXTRACT_VAL(did, 31, 28);
 	pnum = EXTRACT_VAL(did, 27, 12);
 	variant = EXTRACT_VAL(userid, 23, 16);
 	part = EXTRACT_VAL(userid, 15, 0);
-	LOG_DEBUG("Part 0x%" PRIx32 ", Part Num 0x%" PRIx32 ", Variant 0x%" PRIx32
-		  ", version 0x%" PRIx32, part, pnum, variant, version);
 
-	/* Valid DIEID? */
-	if ((version != 0) && (version != 1)) {
-		LOG_WARNING("Unknown Device ID version, cannot identify target");
+	/* Valid DIEID? - check the ALWAYS_1 bit to be 1 */
+	if (!(did & BIT(0))) {
+		LOG_WARNING("Unknown Device ID[0x%" PRIx32 "], cannot identify target",
+			    did);
+		LOG_DEBUG("did 0x%" PRIx32 ", traceid 0x%" PRIx32 ", userid 0x%" PRIx32
+			  ", flashram 0x%" PRIx32 "", did, mspm0_info->traceid, userid,
+			  flashram);
 		return ERROR_FLASH_OPERATION_FAILED;
 	}
 
@@ -345,6 +341,11 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	if (mspm0_info->mspm0_info_index == 0xff) {
 		LOG_WARNING("Unsupported DeviceID[0x%" PRIx32 "], cannot identify target",
 			    pnum);
+		LOG_DEBUG("did 0x%" PRIx32 ", traceid 0x%" PRIx32 ", userid 0x%" PRIx32
+			  ", flashram 0x%" PRIx32 "", did, mspm0_info->traceid, userid,
+			  flashram);
+		LOG_DEBUG("Part 0x%" PRIx32 ", Part Num 0x%" PRIx32 ", Variant 0x%" PRIx32
+			  ", version 0x%" PRIx32, part, pnum, variant, version);
 		return ERROR_FLASH_OPERATION_FAILED;
 	}
 
@@ -356,15 +357,19 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 			break;
 		}
 	}
-	if (mspm0_info->mspm0_info_index == 0xff)
-		LOG_WARNING("Unsupported PART[0x%" PRIx32 "]/variant[0x%" PRIx32
-			    "], known DeviceID[0x%" PRIx32 "]. Attempting to proceed.",
-			    part, variant, pnum);
-	else
-		LOG_DEBUG("Part: %s detected",
-			  mspm0_finf[mspm0_info->mspm0_info_index].part_info[mspm0_info->
-									     mspm0_part_info_index].
-			  partname);
+	if (mspm0_info->mspm0_info_index == 0xff) {
+		mspm0_info->name = mspm0_finf[mspm0_info->mspm0_info_index].familyname;
+		LOG_WARNING("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
+			    "], known DeviceID[0x%" PRIx32
+			    "]. Attempting to proceed as %s.", part, variant, pnum,
+			    mspm0_info->name);
+	} else {
+		mspm0_info->name =
+		    mspm0_finf[mspm0_info->mspm0_info_index].part_info[mspm0_info->
+								       mspm0_part_info_index].
+		    partname;
+		LOG_DEBUG("Part: %s detected", mspm0_info->name);
+	}
 
 	mspm0_info->did = did;
 	mspm0_info->version = version;
@@ -416,6 +421,7 @@ static void msmp0_fctl_translate_ret_err(uint32_t return_code, char *ret_str)
 static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 {
 	struct target *target = bank->target;
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	uint32_t return_code = 0;
 	long long start_ms;
 	long long elapsed_ms;
@@ -439,10 +445,12 @@ static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 		char *error_string = calloc(sizeof(char), ERR_STRING_MAX + 1);
 		if (error_string) {
 			msmp0_fctl_translate_ret_err(return_code, error_string);
-			LOG_ERROR("Flash command failed: %s", error_string);
+			LOG_ERROR("%s: Flash command failed: %s", mspm0_info->name,
+				  error_string);
 			free(error_string);
 		} else {
-			LOG_ERROR("Flash command failed: 0x%" PRIx32, return_code);
+			LOG_ERROR("%s: Flash command failed: 0x%" PRIx32,
+				  mspm0_info->name, return_code);
 		}
 		return ERROR_FAIL;
 	}
@@ -479,8 +487,8 @@ static int mspm0_protect_reg_mainmap(struct flash_bank *bank, uint32_t sector,
 	}
 
 	if (sector_in_bank >= 512) {
-		LOG_ERROR("Invalid sector_in_bank %d at bank " TARGET_ADDR_FMT,
-			  sector_in_bank, bank->base);
+		LOG_ERROR("%s: Invalid sector_in_bank %d at bank " TARGET_ADDR_FMT,
+			  mspm0_info->name, sector_in_bank, bank->base);
 		return ERROR_FAIL;
 	}
 	*protect_reg_offset = 2;
@@ -508,24 +516,27 @@ static int mspm0_protect_reg_map(struct flash_bank *bank, uint32_t sector,
 			return retval;
 		break;
 	case MSPM0_FLASH_BASE_DATA:
-		LOG_ERROR("Bank protection not available " TARGET_ADDR_FMT, bank->base);
+		LOG_ERROR("%s: Bank protection not available " TARGET_ADDR_FMT,
+			  mspm0_info->name, bank->base);
 		return ERROR_FAIL;
 		break;
 	default:
-		LOG_ERROR("Invalid bank address " TARGET_ADDR_FMT, bank->base);
+		LOG_ERROR("%s: Invalid bank address " TARGET_ADDR_FMT, mspm0_info->name,
+			  bank->base);
 		return ERROR_FAIL;
 	}
 
 	/* Basic sanity checks */
 	if (*protect_reg_offset >= mspm0_info->protect_reg_count) {
-		LOG_ERROR("sector %d address overflows protection regs: "
-			  TARGET_ADDR_FMT, sector, bank->base);
+		LOG_ERROR("%s: sector %d address overflows protection regs: "
+			  TARGET_ADDR_FMT, mspm0_info->name, sector, bank->base);
 		return ERROR_FAIL;
 	}
 	if (*protect_reg_bit >= 32) {
 		LOG_ERROR
-		    ("sector %d address causes driver algo error for reg bit %d on bank: "
-		     TARGET_ADDR_FMT, sector, *protect_reg_bit, bank->base);
+		    ("%s: sector %d address causes DRIVER BUG for reg bit %d on bank: "
+		     TARGET_ADDR_FMT, mspm0_info->name, sector, *protect_reg_bit,
+		     bank->base);
 		return ERROR_FAIL;
 	}
 
@@ -646,7 +657,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 
 	if (bank->target->state != TARGET_HALTED) {
-		LOG_ERROR("Please halt target for erasing flash");
+		LOG_ERROR("%s: Please halt target for erasing flash", mspm0_info->name);
 		return ERROR_TARGET_NOT_HALTED;
 	}
 
@@ -655,7 +666,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 
 	for (i = first; i < last; i++) {
 		if (bank->sectors[i].is_protected) {
-			LOG_ERROR("Sector %d is protected", i);
+			LOG_ERROR("%s: Sector %d is protected", mspm0_info->name, i);
 			return ERROR_FLASH_PROTECTED;
 		}
 	}
@@ -677,8 +688,8 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 		target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
 		retval = msmp0_fctl_wait_cmd_ok(bank);
 		if (retval) {
-			LOG_ERROR("Failed Erasing at address 0x%08" PRIx32
-				  "(sector: %d)", addr, csa);
+			LOG_ERROR("%s: Failed Erasing at address 0x%08" PRIx32
+				  "(sector: %d)", mspm0_info->name, addr, csa);
 			return retval;
 		}
 		/*
@@ -720,7 +731,8 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 	 */
 
 	if (bank->target->state != TARGET_HALTED) {
-		LOG_ERROR("Please halt target for programming flash");
+		LOG_ERROR("%s: Please halt target for programming flash",
+			  mspm0_info->name);
 		return ERROR_TARGET_NOT_HALTED;
 	}
 
@@ -728,8 +740,8 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
 	if (offset % mspm0_info->flash_word_size_bytes) {
-		LOG_ERROR("Offset 0x%0" PRIx32 " Must be aligned to %d bytes", offset,
-			  mspm0_info->flash_word_size_bytes);
+		LOG_ERROR("%s: Offset 0x%0" PRIx32 " Must be aligned to %d bytes",
+			  mspm0_info->name, offset, mspm0_info->flash_word_size_bytes);
 		return ERROR_FLASH_DST_BREAKS_ALIGNMENT;
 	}
 
@@ -737,7 +749,7 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t * buffer,
 	last_sec = (offset + count) / mspm0_info->sector_size;
 	for (i = first_sec; i <= last_sec; i++) {
 		if (bank->sectors[i].is_protected) {
-			LOG_ERROR("Sector %d is protected", i);
+			LOG_ERROR("%s: Sector %d is protected", mspm0_info->name, i);
 			return ERROR_FLASH_PROTECTED;
 		}
 	}
@@ -859,7 +871,7 @@ static int mspm0_probe(struct flash_bank *bank)
 		break;
 	case MSPM0_FLASH_BASE_DATA:	/* Warning: detected runtime */
 		if (!mspm0_info->data_flash_size_kb) {
-			LOG_ERROR("Data region NOT available!");
+			LOG_ERROR("%s: Data region NOT available!", mspm0_info->name);
 			bank->size = 0x0;
 			bank->num_sectors = 0x0;
 			return ERROR_OK;
@@ -869,12 +881,13 @@ static int mspm0_probe(struct flash_bank *bank)
 		bank->num_prot_blocks = 0;	/* There is no protection here */
 		break;
 	default:
-		LOG_ERROR("Invalid bank address " TARGET_ADDR_FMT, bank->base);
+		LOG_ERROR("%s: Invalid bank address " TARGET_ADDR_FMT, mspm0_info->name,
+			  bank->base);
 		return ERROR_FAIL;
 	}
 	bank->sectors = calloc(bank->num_sectors, sizeof(struct flash_sector));
 	if (!bank->sectors) {
-		LOG_ERROR("%s: Out of memory for sectors!", __func__);
+		LOG_ERROR("%s: Out of memory for sectors!", mspm0_info->name);
 		return ERROR_FAIL;
 	}
 	for (unsigned int i = 0; i < bank->num_sectors; i++) {
