@@ -106,7 +106,7 @@ struct mspm0_part_info {
 struct mspm0_family_info {
 	const char *family_name;
 	uint16_t part_num;
-	uint8_t part_count;
+	uint16_t part_count;
 	const struct mspm0_part_info *part_info;
 };
 
@@ -390,7 +390,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	}
 
 	/* Check if we at least know the family of devices */
-	for (int i = 0; i < (int)ARRAY_SIZE(mspm0_finf); i++) {
+	for (unsigned int i = 0; i < ARRAY_SIZE(mspm0_finf); i++) {
 		if (mspm0_finf[i].part_num == pnum) {
 			minfo_idx = i;
 			minfo = &mspm0_finf[i];
@@ -467,7 +467,7 @@ const struct {
 
 static void msmp0_fctl_translate_ret_err(uint32_t return_code, char *ret_str)
 {
-	for (unsigned long i = 0; i < ARRAY_SIZE(mspm0_fctl_fail_decode_strings); i++) {
+	for (unsigned int i = 0; i < ARRAY_SIZE(mspm0_fctl_fail_decode_strings); i++) {
 		if (return_code & BIT(mspm0_fctl_fail_decode_strings[i].bit_offset)) {
 			strncat(ret_str, mspm0_fctl_fail_decode_strings[i].fail_string,
 				ERR_STRING_MAX);
@@ -481,11 +481,11 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, uint32_t addr,
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	struct target *target = bank->target;
-	uint32_t sector_num = (addr >> 10);
-	uint32_t sector_in_bank = sector_num;
-	uint32_t phys_sector_num = sector_num;
+	uint16_t sector_num = (addr >> 10);
+	uint16_t sector_in_bank = sector_num;
+	uint16_t phys_sector_num = sector_num;
 	uint32_t sysctl_sec_status;
-	uint32_t exec_upper_bank;
+	bool exec_upper_bank;
 
 	/*
 	 * If the device has dual banks we will need to check if it is configured
@@ -574,8 +574,8 @@ static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	uint32_t return_code = 0;
-	long long start_ms;
-	long long elapsed_ms;
+	int64_t start_ms;
+	int64_t elapsed_ms;
 
 	int retval = ERROR_OK;
 
