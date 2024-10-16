@@ -520,7 +520,7 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	if (sector_num < mspm0_info->main_flash_size_kb) {
 		/* Use CMDWEPROTA */
 		if (phys_sector_num < 32) {
-			*sector_mask = 1 << phys_sector_num;
+			*sector_mask = BIT(phys_sector_num);
 			*reg = FCTL_REG_CMDWEPROTA;
 			return ERROR_OK;
 		}
@@ -529,9 +529,9 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 		if (sector_in_bank < 256) {
 			/* Dual bank system */
 			if (mspm0_info->main_flash_num_banks > 1) {
-				*sector_mask = 1 << (sector_in_bank / 8);
+				*sector_mask = BIT(sector_in_bank / 8);
 			} else {	/* Single bank system */
-				*sector_mask = 1 << ((sector_in_bank - 32) / 8);
+				*sector_mask = BIT((sector_in_bank - 32) / 8);
 			}
 			*reg = FCTL_REG_CMDWEPROTB;
 			return ERROR_OK;
@@ -544,7 +544,7 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 		 * will return an error.
 		 */
 		if (addr >= MSPM0_FLASH_BASE_NONMAIN && addr <= MSPM0_FLASH_END_NONMAIN) {
-			*sector_mask = 1 << (sector_num % 32);
+			*sector_mask = BIT(sector_num % 32);
 			*reg = FCTL_REG_CMDWEPROTNM;
 			return ERROR_OK;
 		}
