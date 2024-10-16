@@ -574,8 +574,8 @@ static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	uint32_t return_code = 0;
-	long long start_ms;
-	long long elapsed_ms;
+	int64_t start_ms;
+	int64_t elapsed_ms;
 
 	int retval = ERROR_OK;
 
