@@ -390,7 +390,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	}
 
 	/* Check if we at least know the family of devices */
-	for (int i = 0; i < (int)ARRAY_SIZE(mspm0_finf); i++) {
+	for (unsigned int i = 0; i < ARRAY_SIZE(mspm0_finf); i++) {
 		if (mspm0_finf[i].part_num == pnum) {
 			minfo_idx = i;
 			minfo = &mspm0_finf[i];
@@ -410,7 +410,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	}
 
 	/* Can we specifically identify the chip */
-	for (int i = 0; i < minfo->part_count; i++) {
+	for (unsigned int i = 0; i < minfo->part_count; i++) {
 		if (minfo->part_info[i].part == part
 		    && minfo->part_info[i].variant == variant) {
 			pinfo_idx = i;
@@ -467,7 +467,7 @@ const struct {
 
 static void msmp0_fctl_translate_ret_err(unsigned int return_code, char *ret_str)
 {
-	for (unsigned long i = 0; i < ARRAY_SIZE(mspm0_fctl_fail_decode_strings); i++) {
+	for (unsigned int i = 0; i < ARRAY_SIZE(mspm0_fctl_fail_decode_strings); i++) {
 		if (return_code & BIT(mspm0_fctl_fail_decode_strings[i].bit_offset)) {
 			strncat(ret_str, mspm0_fctl_fail_decode_strings[i].fail_string,
 				ERR_STRING_MAX);
