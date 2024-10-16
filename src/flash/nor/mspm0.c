@@ -73,40 +73,40 @@
 
 struct mspm0_flash_bank {
 	/* chip id register */
-	uint32_t did;
+	unsigned int did;
 	/* Device Unique ID register */
-	uint32_t traceid;
-	uint8_t version;
+	unsigned int traceid;
+	unsigned char version;
 
 	/* Pointer to name */
 	const char *name;
 
 	/* Decoded flash information */
-	uint32_t data_flash_size_kb;
-	uint32_t main_flash_size_kb;
-	uint32_t main_flash_num_banks;
-	uint32_t sector_size;
+	unsigned int data_flash_size_kb;
+	unsigned int main_flash_size_kb;
+	unsigned int main_flash_num_banks;
+	unsigned int sector_size;
 	/* Decoded SRAM information */
-	uint32_t sram_size_kb;
+	unsigned int sram_size_kb;
 
 	/* Flash word size: 64 bit = 8, 128bit = 16 bytes */
-	uint8_t flash_word_size_bytes;
+	unsigned char flash_word_size_bytes;
 
 	/* Protection register stuff */
-	uint32_t protect_reg_base;
-	uint32_t protect_reg_count;
+	unsigned int protect_reg_base;
+	unsigned int protect_reg_count;
 };
 
 struct mspm0_part_info {
 	const char *part_name;
-	uint16_t part;
-	uint8_t variant;
+	unsigned short part;
+	unsigned char variant;
 };
 
 struct mspm0_family_info {
 	const char *family_name;
-	uint16_t part_num;
-	uint8_t part_count;
+	unsigned short part_num;
+	unsigned char part_count;
 	const struct mspm0_part_info *part_info;
 };
 
@@ -352,7 +352,7 @@ static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cm
 }
 
 /* Extract a bitfield helper */
-static uint32_t mspm0_extract_val(uint32_t var, uint8_t hi, uint8_t lo)
+static unsigned int mspm0_extract_val(unsigned int var, unsigned char hi, unsigned char lo)
 {
 	return (var & GENMASK(hi, lo)) >> lo;
 }
@@ -361,11 +361,11 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	struct target *target = bank->target;
-	uint32_t did, userid, flashram;
-	uint8_t minfo_idx = 0xff;
-	uint8_t pinfo_idx = 0xff;
-	uint16_t pnum, part;
-	uint8_t variant, version;
+	unsigned int did, userid, flashram;
+	unsigned char minfo_idx = 0xff;
+	unsigned char pinfo_idx = 0xff;
+	unsigned short pnum, part;
+	unsigned char variant, version;
 	const struct mspm0_family_info *minfo = NULL;
 
 	/* Read and parse chip identification register */
@@ -454,7 +454,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
  * Decode error values
  */
 const struct {
-	const uint8_t bit_offset;
+	const unsigned char bit_offset;
 	const char *fail_string;
 } mspm0_fctl_fail_decode_strings[] = {
 	{ 2, "CMDINPROGRESS" },
@@ -465,7 +465,7 @@ const struct {
 	{ 12, "FAILMISC" },
 };
 
-static void msmp0_fctl_translate_ret_err(uint32_t return_code, char *ret_str)
+static void msmp0_fctl_translate_ret_err(unsigned int return_code, char *ret_str)
 {
 	for (unsigned long i = 0; i < ARRAY_SIZE(mspm0_fctl_fail_decode_strings); i++) {
 		if (return_code & BIT(mspm0_fctl_fail_decode_strings[i].bit_offset)) {
@@ -476,16 +476,16 @@ static void msmp0_fctl_translate_ret_err(uint32_t return_code, char *ret_str)
 	}
 }
 
-static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, uint32_t addr,
-									 uint32_t *reg, uint32_t *sector_mask)
+static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
+									 unsigned int *reg, unsigned int *sector_mask)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	struct target *target = bank->target;
-	uint32_t sector_num = (addr >> 10);
-	uint32_t sector_in_bank = sector_num;
-	uint32_t phys_sector_num = sector_num;
-	uint32_t sysctl_sec_status;
-	uint32_t exec_upper_bank;
+	unsigned int sector_num = (addr >> 10);
+	unsigned int sector_in_bank = sector_num;
+	unsigned int phys_sector_num = sector_num;
+	unsigned int sysctl_sec_status;
+	unsigned int exec_upper_bank;
 
 	/*
 	 * If the device has dual banks we will need to check if it is configured
@@ -519,19 +519,19 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, uint32_t addr,
 
 	if (sector_num < mspm0_info->main_flash_size_kb) {
 		/* Use CMDWEPROTA */
-		if (phys_sector_num < (uint32_t)32) {
-			*sector_mask = (uint32_t)1 << phys_sector_num;
+		if (phys_sector_num < (unsigned int)32) {
+			*sector_mask = (unsigned int)1 << phys_sector_num;
 			*reg = FCTL_REG_CMDWEPROTA;
 			return ERROR_OK;
 		}
 
 		/* Use CMDWEPROTB */
-		if (sector_in_bank < (uint32_t)256) {
+		if (sector_in_bank < (unsigned int)256) {
 			/* Dual bank system */
 			if (mspm0_info->main_flash_num_banks > 1) {
-				*sector_mask = (uint32_t)1 << (sector_in_bank / 8);
+				*sector_mask = (unsigned int)1 << (sector_in_bank / 8);
 			} else {	/* Single bank system */
-				*sector_mask = (uint32_t)1 << ((sector_in_bank - 32) / 8);
+				*sector_mask = (unsigned int)1 << ((sector_in_bank - 32) / 8);
 			}
 			*reg = FCTL_REG_CMDWEPROTB;
 			return ERROR_OK;
@@ -555,11 +555,11 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, uint32_t addr,
 	return ERROR_FLASH_DST_OUT_OF_BANK;
 }
 
-static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, uint32_t addr)
+static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int addr)
 {
 	struct target *target = bank->target;
-	uint32_t reg = 0x0;
-	uint32_t sector_mask = 0x0;
+	unsigned int reg = 0x0;
+	unsigned int sector_mask = 0x0;
 	int ret;
 
 	ret = mspm0_fctl_get_sector_reg(bank, addr, &reg, &sector_mask);
@@ -573,7 +573,7 @@ static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	uint32_t return_code = 0;
+	unsigned int return_code = 0;
 	long long start_ms;
 	long long elapsed_ms;
 
@@ -609,12 +609,12 @@ static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 	return ERROR_OK;
 }
 
-static int mspm0_protect_reg_mainmap(struct flash_bank *bank, uint32_t sector,
-				     uint32_t *protect_reg_offset,
-				     uint32_t *protect_reg_bit)
+static int mspm0_protect_reg_mainmap(struct flash_bank *bank, unsigned int sector,
+				     unsigned int *protect_reg_offset,
+				     unsigned int *protect_reg_bit)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	uint32_t bank_size, sector_in_bank;
+	unsigned int bank_size, sector_in_bank;
 
 	if (sector < 32) {
 		*protect_reg_offset = 0;
@@ -644,9 +644,9 @@ static int mspm0_protect_reg_mainmap(struct flash_bank *bank, uint32_t sector,
 	return ERROR_OK;
 }
 
-static int mspm0_protect_reg_map(struct flash_bank *bank, uint32_t sector,
-				 uint32_t *protect_reg_offset,
-				 uint32_t *protect_reg_bit)
+static int mspm0_protect_reg_map(struct flash_bank *bank, unsigned int sector,
+				 unsigned int *protect_reg_offset,
+				 unsigned int *protect_reg_bit)
 {
 	int retval;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
@@ -694,8 +694,8 @@ static int mspm0_protect_check(struct flash_bank *bank)
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
-	uint32_t protect_reg_offset, protect_reg_bit;
+	unsigned int protect_reg_cache[MSPM0_MAX_PROTREGS];
+	unsigned int protect_reg_offset, protect_reg_bit;
 	unsigned int i;
 
 	if (mspm0_info->did == 0)
@@ -735,8 +735,8 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
-	uint32_t protect_reg_offset, protect_reg_bit;
+	unsigned int protect_reg_cache[MSPM0_MAX_PROTREGS];
+	unsigned int protect_reg_offset, protect_reg_bit;
 	unsigned int i;
 	int retval;
 
@@ -809,7 +809,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int i;
-	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
+	unsigned int protect_reg_cache[MSPM0_MAX_PROTREGS];
 
 	if (bank->target->state != TARGET_HALTED) {
 		LOG_ERROR("%s: Please halt target for erasing flash", mspm0_info->name);
@@ -826,9 +826,9 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 				&protect_reg_cache[i]);
 	}
 
-	for (uint32_t csa = first; csa < last; csa++) {
+	for (unsigned int csa = first; csa < last; csa++) {
 		int retval;
-		uint32_t addr = csa * mspm0_info->sector_size;
+		unsigned int addr = csa * mspm0_info->sector_size;
 
 		retval = mspm0_fctl_unprotect_sector(bank, addr);
 		if (retval) {
@@ -864,13 +864,13 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	return ERROR_OK;
 }
 
-static int mspm0_write(struct flash_bank *bank, const uint8_t *buffer,
-		       uint32_t offset, uint32_t count)
+static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
+		       unsigned int offset, unsigned int count)
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int i;
-	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
+	unsigned int protect_reg_cache[MSPM0_MAX_PROTREGS];
 
 	/*
 	 * XXX: TRM Says:
@@ -909,9 +909,9 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t *buffer,
 	}
 
 	while (count) {
-		uint32_t num_bytes_to_write;
-		uint32_t data_reg = FCTL_REG_CMDDATA0;
-		uint32_t bytes_en;
+		unsigned int num_bytes_to_write;
+		unsigned int data_reg = FCTL_REG_CMDDATA0;
+		unsigned int bytes_en;
 		int retval;
 
 		/*
@@ -957,16 +957,16 @@ static int mspm0_write(struct flash_bank *bank, const uint8_t *buffer,
 			return retval;
 
 		while (num_bytes_to_write) {
-			uint32_t sub_count;
-			uint32_t write_value;
+			unsigned int sub_count;
+			unsigned int write_value;
 
 			/* Make sure alignments are handled correctly */
-			(void)memcpy(&write_value, buffer, sizeof(uint32_t));
+			(void)memcpy(&write_value, buffer, sizeof(unsigned int));
 
 			target_write_u32(target, data_reg, write_value);
 			sub_count =
 			    (num_bytes_to_write <
-			     sizeof(uint32_t)) ? num_bytes_to_write : 4;
+			     sizeof(unsigned int)) ? num_bytes_to_write : 4;
 			buffer += sub_count;
 			data_reg += sub_count;
 			num_bytes_to_write -= sub_count;
