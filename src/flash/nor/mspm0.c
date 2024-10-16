@@ -73,9 +73,9 @@
 
 struct mspm0_flash_bank {
 	/* chip id register */
-	unsigned int did;
+	uint32_t did;
 	/* Device Unique ID register */
-	unsigned int traceid;
+	uint32_t traceid;
 	unsigned char version;
 
 	/* Pointer to name */
@@ -361,7 +361,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	struct target *target = bank->target;
-	unsigned int did, userid, flashram;
+	uint32_t did, userid, flashram;
 	unsigned char minfo_idx = 0xff;
 	unsigned char pinfo_idx = 0xff;
 	unsigned short pnum, part;
@@ -484,7 +484,7 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	unsigned int sector_num = (addr >> 10);
 	unsigned int sector_in_bank = sector_num;
 	unsigned int phys_sector_num = sector_num;
-	unsigned int sysctl_sec_status;
+	uint32_t sysctl_sec_status;
 	unsigned int exec_upper_bank;
 
 	/*
@@ -559,7 +559,7 @@ static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int add
 {
 	struct target *target = bank->target;
 	unsigned int reg = 0x0;
-	unsigned int sector_mask = 0x0;
+	uint32_t sector_mask = 0x0;
 	int ret;
 
 	ret = mspm0_fctl_get_sector_reg(bank, addr, &reg, &sector_mask);
@@ -573,7 +573,7 @@ static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	unsigned int return_code = 0;
+	uint32_t return_code = 0;
 	long long start_ms;
 	long long elapsed_ms;
 
@@ -694,7 +694,7 @@ static int mspm0_protect_check(struct flash_bank *bank)
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	unsigned int protect_reg_cache[MSPM0_MAX_PROTREGS];
+	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 	unsigned int protect_reg_offset, protect_reg_bit;
 	unsigned int i;
 
@@ -735,7 +735,7 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	unsigned int protect_reg_cache[MSPM0_MAX_PROTREGS];
+	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 	unsigned int protect_reg_offset, protect_reg_bit;
 	unsigned int i;
 	int retval;
@@ -809,7 +809,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int i;
-	unsigned int protect_reg_cache[MSPM0_MAX_PROTREGS];
+	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 
 	if (bank->target->state != TARGET_HALTED) {
 		LOG_ERROR("%s: Please halt target for erasing flash", mspm0_info->name);
@@ -870,7 +870,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int i;
-	unsigned int protect_reg_cache[MSPM0_MAX_PROTREGS];
+	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 
 	/*
 	 * XXX: TRM Says:
@@ -911,7 +911,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	while (count) {
 		unsigned int num_bytes_to_write;
 		unsigned int data_reg = FCTL_REG_CMDDATA0;
-		unsigned int bytes_en;
+		uint32_t bytes_en;
 		int retval;
 
 		/*
@@ -958,7 +958,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 
 		while (num_bytes_to_write) {
 			unsigned int sub_count;
-			unsigned int write_value;
+			uint32_t write_value;
 
 			/* Make sure alignments are handled correctly */
 			(void)memcpy(&write_value, buffer, sizeof(unsigned int));
