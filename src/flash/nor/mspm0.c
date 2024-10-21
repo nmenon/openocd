@@ -32,6 +32,7 @@
 
 /* MPM0 FCTL registers */
 #define FLASH_CONTROL_BASE				(0x400cd000)
+#define FCTL_REG_DESC					(FLASH_CONTROL_BASE + 0x10FC)
 #define FCTL_REG_CMDEXEC				(FLASH_CONTROL_BASE + 0x1100)
 #define FCTL_REG_CMDTYPE				(FLASH_CONTROL_BASE + 0x1104)
 #define FCTL_REG_CMDADDR				(FLASH_CONTROL_BASE + 0x1120)
@@ -62,6 +63,9 @@
 #define FCTL_CMDTYPE_SIZE_ONEWORD		(0x00000000U)
 #define FCTL_CMDTYPE_SIZE_SECTOR		(0x00000040U)
 
+/* FCTL_FEATURE_VER_B minimum*/
+#define FCTL_FEATURE_VER_B				(0xA)
+
 #define MSPM0_MAX_PROTREGS				(3)
 
 #define MSPM0_FLASH_TIMEOUT_MS			(8000)
@@ -70,6 +74,14 @@
 /* SYSCTL BASE*/
 #define SYSCTL_BASE						(0x400AF000U)
 #define SYSCTL_SECCFG_SECSTATUS			(SYSCTL_BASE + 0x00003048U)
+
+/* TI manufacturer ID*/
+#define TI_MANUFACTURER_ID				(0x17)
+
+/* Defines for probe status*/
+#define MSPM0_NO_ID_FOUND				(0)
+#define MSPM0_DEV_ID_FOUND				(1)
+#define MSPM0_DEV_PART_ID_FOUND			(2)
 
 struct mspm0_flash_bank {
 	/* chip id register */
@@ -95,6 +107,9 @@ struct mspm0_flash_bank {
 	/* Protection register stuff */
 	unsigned int protect_reg_base;
 	unsigned int protect_reg_count;
+
+	/* Flashctl version: A - CMDWEPROTA/B, B- CMDWEPROTB */
+	unsigned char flash_version;
 };
 
 struct mspm0_part_info {
@@ -361,26 +376,37 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	struct target *target = bank->target;
-	uint32_t did, userid, flashram;
+	uint32_t did, userid, flashram, flashdesc;
 	unsigned char minfo_idx = 0xff;
 	unsigned char pinfo_idx = 0xff;
-	unsigned short pnum, part;
+	unsigned short pnum, part, manufacturer;
 	unsigned char variant, version;
+	unsigned char probe_status = MSPM0_NO_ID_FOUND;
 	const struct mspm0_family_info *minfo = NULL;
 
-	/* Read and parse chip identification register */
+	/* Read and parse chip identification and flash version register */
 	target_read_u32(target, MSPM0_DID, &did);
 	target_read_u32(target, MSPM0_TRACEID, &mspm0_info->traceid);
 	target_read_u32(target, MSPM0_USERID, &userid);
 	target_read_u32(target, MSPM0_SRAMFLASH, &flashram);
+	target_read_u32(target, FCTL_REG_DESC, &flashdesc);
 
 	version = mspm0_extract_val(did, 31, 28);
 	pnum = mspm0_extract_val(did, 27, 12);
 	variant = mspm0_extract_val(userid, 23, 16);
 	part = mspm0_extract_val(userid, 15, 0);
+	manufacturer = mspm0_extract_val(did, 11, 1);
 
-	/* Valid DIEID? - check the ALWAYS_1 bit to be 1 */
-	if (!(did & BIT(0))) {
+	/*
+	 * Valid DIE and manufacturer ID?
+	 * Check the ALWAYS_1 bit to be 1 and manufacturer to be 0x17. All MSPM0
+	 * devices within the Device ID field of the factory constants will
+	 * always read 0x17 as it is TI's JEDEC bank and company code. If 1
+	 * and 0x17 is not read from their respective registers then it truly
+	 * is not a MSPM0 device so we will return an error instead of
+	 * going any further.
+	 */
+	if (!(did & BIT(0)) || !(manufacturer & TI_MANUFACTURER_ID)) {
 		LOG_WARNING("Unknown Device ID[0x%" PRIx32 "], cannot identify target",
 			    did);
 		LOG_DEBUG("did 0x%" PRIx32 ", traceid 0x%" PRIx32 ", userid 0x%" PRIx32
@@ -394,38 +420,61 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 		if (mspm0_finf[i].part_num == pnum) {
 			minfo_idx = i;
 			minfo = &mspm0_finf[i];
+			probe_status = MSPM0_DEV_ID_FOUND;
 			break;
 		}
 	}
 
-	if (minfo_idx == 0xff) {
-		LOG_WARNING("Unsupported DeviceID[0x%" PRIx32 "], cannot identify target",
-			    pnum);
-		LOG_DEBUG("did 0x%" PRIx32 ", traceid 0x%" PRIx32 ", userid 0x%" PRIx32
-			  ", flashram 0x%" PRIx32 "", did, mspm0_info->traceid, userid,
-			  flashram);
-		LOG_DEBUG("Part 0x%" PRIx32 ", Part Num 0x%" PRIx32 ", Variant 0x%" PRIx32
-			  ", version 0x%" PRIx32, part, pnum, variant, version);
-		return ERROR_FLASH_OPERATION_FAILED;
-	}
-
-	/* Can we specifically identify the chip */
-	for (unsigned int i = 0; i < minfo->part_count; i++) {
-		if (minfo->part_info[i].part == part
-		    && minfo->part_info[i].variant == variant) {
-			pinfo_idx = i;
-			break;
+	/*
+	 * If we can identify the part number then we will attempt to identify
+	 * the specific chip. Otherwise, if we do not know the part number then
+	 * it would be useless to identify the specific chip.
+	 */
+	if (probe_status == MSPM0_DEV_ID_FOUND) {
+		/* Can we specifically identify the chip */
+		for (unsigned int i = 0; i < minfo->part_count; i++) {
+			if (minfo->part_info[i].part == part
+				&& minfo->part_info[i].variant == variant) {
+				pinfo_idx = i;
+				probe_status = MSPM0_DEV_PART_ID_FOUND;
+				break;
+			}
 		}
 	}
-	if (minfo_idx == 0xff) {
-		mspm0_info->name = mspm0_finf[minfo_idx].family_name;
-		LOG_WARNING("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
-			    "], known DeviceID[0x%" PRIx32
-			    "]. Attempting to proceed as %s.", part, variant, pnum,
+
+	/*
+	 * We will check the status of our probe within this switch-case statement
+	 * using these three scenarios.
+	 *
+	 * 1) Device, part, and variant ID is unknown.
+	 * 2) Device ID is known but the part/variant ID is unknown.
+	 * 3) Device ID and part/variant ID is known
+	 *
+	 * For scenario 1, we allow the user to continue because if the
+	 * manufacturer matches TI's JEDEC value and ALWAYS_1 from the device ID
+	 * field is correct then the assumption the user is using an MSPM0 device
+	 * can be made.
+	 */
+	switch (probe_status) {
+	case MSPM0_NO_ID_FOUND:
+		mspm0_info->name = "mspm0x";
+		LOG_INFO("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
+				"], unknown DeviceID[0x%" PRIx32
+				"]. Attempting to proceed as %s.", part, variant, pnum,
+				mspm0_info->name);
+		break;
+	case MSPM0_DEV_ID_FOUND:
+			mspm0_info->name = mspm0_finf[minfo_idx].family_name;
+		LOG_INFO("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
+				"], known DeviceID[0x%" PRIx32
+				"]. Attempting to proceed as %s.", part, variant, pnum,
 			    mspm0_info->name);
-	} else {
+		break;
+	case MSPM0_DEV_PART_ID_FOUND:
+	default:
 		mspm0_info->name = mspm0_finf[minfo_idx].part_info[pinfo_idx].part_name;
 		LOG_DEBUG("Part: %s detected", mspm0_info->name);
+		break;
 	}
 
 	mspm0_info->did = did;
@@ -434,6 +483,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	mspm0_info->main_flash_size_kb = mspm0_extract_val(flashram, 11, 0);
 	mspm0_info->main_flash_num_banks = mspm0_extract_val(flashram, 13, 12) + 1;
 	mspm0_info->sram_size_kb = mspm0_extract_val(flashram, 25, 16);
+	mspm0_info->flash_version = mspm0_extract_val(flashdesc, 15, 12);
 
 	/*
 	 * Hardcode flash_word_size unless we find some other pattern
@@ -1034,8 +1084,18 @@ static int mspm0_probe(struct flash_bank *bank)
 	case MSPM0_FLASH_BASE_MAIN:
 		bank->size = (mspm0_info->main_flash_size_kb * 1024);
 		bank->num_sectors = bank->size / mspm0_info->sector_size;
-		mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTA;
-		mspm0_info->protect_reg_count = 3;
+		/*
+		 * If the feature version bit read from the FCTL_REG_DESC is
+		 * greater than or equal to 0xA then it means that the device
+		 * will exclusively use CMDWEPROTB ONLY for MAIN memory protection
+		 */
+		if (mspm0_info->flash_version >= FCTL_FEATURE_VER_B) {
+			mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTB;
+			mspm0_info->protect_reg_count = 1;
+		} else {
+			mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTA;
+			mspm0_info->protect_reg_count = 3;
+		}
 		break;
 	case MSPM0_FLASH_BASE_DATA:
 		if (!mspm0_info->data_flash_size_kb) {
@@ -1044,9 +1104,16 @@ static int mspm0_probe(struct flash_bank *bank)
 			bank->num_sectors = 0x0;
 			return ERROR_OK;
 		}
-		bank->size = (mspm0_info->main_flash_size_kb * 1024);
+		/*
+		 * Any MSPM0 device containing data bank will have a flashctl
+		 * feature version of 0xA or higher. Since data bank is treated
+		 * like MAIN memory, it will also exclusively use CMDWEPROTB for
+		 * protection.
+		 */
+		bank->size = (mspm0_info->data_flash_size_kb * 1024);
 		bank->num_sectors = bank->size / mspm0_info->sector_size;
-		bank->num_prot_blocks = 0;	/* There is no protection here */
+		mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTB;
+		mspm0_info->protect_reg_count = 1;
 		break;
 	default:
 		LOG_ERROR("%s: Invalid bank address " TARGET_ADDR_FMT, mspm0_info->name,
