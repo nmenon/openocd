@@ -619,6 +619,22 @@ static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int add
 	return ret;
 }
 
+static void mspm0_fctl_cfg_command(struct flash_bank *bank, uint32_t addr, uint32_t cmd, uint32_t byte_en)
+{
+	struct target *target = bank->target;
+
+	/*
+	 * Configure the flash operation within the CMDTYPE register, byte_en
+	 * bits if needed, and then set the address where the flash operation
+	 * will execute.
+	 */
+	target_write_u32(target, FCTL_REG_CMDTYPE, cmd);
+	if (byte_en != 0) {
+		target_write_u32(target, FCTL_REG_CMDBYTEN, byte_en);
+	}
+	target_write_u32(target, FCTL_REG_CMDADDR, addr);
+}
+
 static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 {
 	struct target *target = bank->target;
@@ -886,9 +902,8 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 				  "(sector: %d)", mspm0_info->name, addr, csa);
 			return retval;
 		}
-		target_write_u32(target, FCTL_REG_CMDTYPE,
-				 (FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR));
-		target_write_u32(target, FCTL_REG_CMDADDR, addr);
+		mspm0_fctl_cfg_command(bank, addr,
+			(FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR), 0);
 		target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
 		retval = msmp0_fctl_wait_cmd_ok(bank);
 		if (retval) {
@@ -993,15 +1008,8 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			return ERROR_FAIL;
 		}
 
-		target_write_u32(target, FCTL_REG_CMDTYPE,
-				 (FCTL_CMDTYPE_COMMAND_PROGRAM |
-				  FCTL_CMDTYPE_SIZE_ONEWORD));
-
-		/* When writing to part of flash_word - set the bit fields */
-		target_write_u32(target, FCTL_REG_CMDBYTEN, bytes_en);
-
-		target_write_u32(target, FCTL_REG_CMDADDR, offset);
-
+		mspm0_fctl_cfg_command(bank, offset,
+			(FCTL_CMDTYPE_COMMAND_PROGRAM | FCTL_CMDTYPE_SIZE_ONEWORD), bytes_en);
 		retval = mspm0_fctl_unprotect_sector(bank, offset);
 		if (retval)
 			return retval;
