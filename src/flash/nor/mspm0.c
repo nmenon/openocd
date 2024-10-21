@@ -531,6 +531,7 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	struct target *target = bank->target;
+	int ret = ERROR_OK;
 	unsigned int sector_num = (addr >> 10);
 	unsigned int sector_in_bank = sector_num;
 	unsigned int phys_sector_num = sector_num;
@@ -562,46 +563,59 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	}
 
 	/*
-	 * NOTE: All MSPM0 devices will use CMDWEPROTA and CMDWEPROTB for MAIN
-	 * flash. CMDWEPROTC is included in the TRM/DATASHEET but for all
-	 * practical purposes, it is considered reserved.
+	 * NOTE: MSPM0 devices of version A will use CMDWEPROTA and CMDWEPROTB
+	 * for MAIN flash. CMDWEPROTC is included in the TRM/DATASHEET but for
+	 * all practical purposes, it is considered reserved. If the flash
+	 * version on the device is version B, then we will only use
+	 * CMDWEPROTB for MAIN and DATA flash if the device has it.
 	 */
-	if (sector_num < mspm0_info->main_flash_size_kb) {
-		/* Use CMDWEPROTA */
-		if (phys_sector_num < 32) {
-			*sector_mask = BIT(phys_sector_num);
-			*reg = FCTL_REG_CMDWEPROTA;
-			return ERROR_OK;
-		}
-
-		/* Use CMDWEPROTB */
-		if (sector_in_bank < 256) {
-			/* Dual bank system */
-			if (mspm0_info->main_flash_num_banks > 1) {
-				*sector_mask = BIT(sector_in_bank / 8);
-			} else {	/* Single bank system */
-				*sector_mask = BIT((sector_in_bank - 32) / 8);
+	switch (bank->base) {
+	case MSPM0_FLASH_BASE_MAIN:
+		if (mspm0_info->flash_version < FCTL_FEATURE_VER_B) {
+			/* Use CMDWEPROTA */
+			if (phys_sector_num < 32) {
+				*sector_mask = BIT(phys_sector_num);
+				*reg = FCTL_REG_CMDWEPROTA;
 			}
+
+			/* Use CMDWEPROTB */
+			if (phys_sector_num >= 32 && sector_in_bank < 256) {
+				/* Dual bank system */
+				if (mspm0_info->main_flash_num_banks > 1) {
+					*sector_mask = BIT(sector_in_bank / 8);
+				} else {	/* Single bank system */
+					*sector_mask = BIT((sector_in_bank - 32) / 8);
+				}
+				*reg = FCTL_REG_CMDWEPROTB;
+			}
+		} else {
+			*sector_mask = BIT((sector_in_bank / 8) % 32);
 			*reg = FCTL_REG_CMDWEPROTB;
-			return ERROR_OK;
 		}
-	} else {
+		break;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		*sector_mask = BIT(sector_num % 32);
+		*reg = FCTL_REG_CMDWEPROTNM;
+		break;
+	case MSPM0_FLASH_BASE_DATA:
+		*sector_mask = BIT((sector_in_bank / 8) % 32);
+		*reg = FCTL_REG_CMDWEPROTB;
+		break;
+	default:
 		/*
-		 * Due to the consequences of NONMAIN memory we will perform an
-		 * additional check to confirm that the address being passed through
-		 * is NONMAIN flash. If the address passed through is not proper we
-		 * will return an error.
+		 * Not expected to reach here due to check in mspm0_address_check()
+		 * but adding it as another layer of safety.
 		 */
-		if (addr >= MSPM0_FLASH_BASE_NONMAIN && addr <= MSPM0_FLASH_END_NONMAIN) {
-			*sector_mask = BIT(sector_num % 32);
-			*reg = FCTL_REG_CMDWEPROTNM;
-			return ERROR_OK;
-		}
+		ret = ERROR_FLASH_DST_OUT_OF_BANK;
+		break;
 	}
 
-	LOG_ERROR("%s: Unable to map sector protect reg for address 0x%08" PRIx32,
-			  mspm0_info->name, addr);
-	return ERROR_FLASH_DST_OUT_OF_BANK;
+	if (ret != ERROR_OK) {
+		LOG_ERROR("%s: Unable to map sector protect reg for address 0x%08" PRIx32,
+					mspm0_info->name, addr);
+	}
+
+	return ret;
 }
 
 static int mspm0_address_check(struct flash_bank *bank, unsigned int addr)
