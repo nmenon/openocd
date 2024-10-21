@@ -566,7 +566,6 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	 * flash. CMDWEPROTC is included in the TRM/DATASHEET but for all
 	 * practical purposes, it is considered reserved.
 	 */
-
 	if (sector_num < mspm0_info->main_flash_size_kb) {
 		/* Use CMDWEPROTA */
 		if (phys_sector_num < 32) {
@@ -605,16 +604,61 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	return ERROR_FLASH_DST_OUT_OF_BANK;
 }
 
+static int mspm0_address_check(struct flash_bank *bank, unsigned int addr)
+{
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
+	unsigned int flash_main_size = mspm0_info->main_flash_size_kb * 1024;
+	unsigned int flash_data_size = mspm0_info->data_flash_size_kb * 1024;
+	int ret = ERROR_FLASH_SECTOR_INVALID;
+
+	/*
+	 * Before unprotecting any memory lets make sure that the address and
+	 * bank given is a known bank and whether or not the address falls under
+	 * the proper bank.
+	 */
+	switch (bank->base) {
+	case MSPM0_FLASH_BASE_MAIN:
+		if (addr <= (MSPM0_FLASH_BASE_MAIN + flash_main_size))
+			ret = ERROR_OK;
+		break;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		if (addr >= MSPM0_FLASH_BASE_NONMAIN && addr <= MSPM0_FLASH_END_NONMAIN)
+			ret = ERROR_OK;
+		break;
+	case MSPM0_FLASH_BASE_DATA:
+		if (addr >= MSPM0_FLASH_BASE_DATA && addr <= (MSPM0_FLASH_BASE_DATA + flash_data_size))
+			ret = ERROR_OK;
+		break;
+	default:
+		ret = ERROR_FLASH_DST_OUT_OF_BANK;
+		break;
+	}
+
+	return ret;
+}
+
 static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int addr)
 {
 	struct target *target = bank->target;
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int reg = 0x0;
 	uint32_t sector_mask = 0x0;
 	int ret;
 
-	ret = mspm0_fctl_get_sector_reg(bank, addr, &reg, &sector_mask);
-	if (ret == ERROR_OK)
+	ret = mspm0_address_check(bank, addr);
+	switch (ret) {
+	case ERROR_FLASH_SECTOR_INVALID:
+		LOG_ERROR("%s: Unable to map sector protect reg for address 0x%08" PRIx32,
+				  mspm0_info->name, addr);
+		break;
+	case ERROR_FLASH_DST_OUT_OF_BANK:
+		LOG_ERROR("%s: Unable to determine which bank to use 0x%08" PRIx32,
+				  mspm0_info->name, addr);
+		break;
+	default:
+		mspm0_fctl_get_sector_reg(bank, addr, &reg, &sector_mask);
 		target_write_u32(target, reg, ~sector_mask);
+	}
 
 	return ret;
 }
