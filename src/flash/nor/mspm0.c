@@ -464,7 +464,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 				mspm0_info->name);
 		break;
 	case MSPM0_DEV_ID_FOUND:
-			mspm0_info->name = mspm0_finf[minfo_idx].family_name;
+		mspm0_info->name = mspm0_finf[minfo_idx].family_name;
 		LOG_INFO("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
 				"], known DeviceID[0x%" PRIx32
 				"]. Attempting to proceed as %s.", part, variant, pnum,
@@ -571,6 +571,7 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	 */
 	switch (bank->base) {
 	case MSPM0_FLASH_BASE_MAIN:
+	case MSPM0_FLASH_BASE_DATA:
 		if (mspm0_info->flash_version < FCTL_FEATURE_VER_B) {
 			/* Use CMDWEPROTA */
 			if (phys_sector_num < 32) {
@@ -596,10 +597,6 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	case MSPM0_FLASH_BASE_NONMAIN:
 		*sector_mask = BIT(sector_num % 32);
 		*reg = FCTL_REG_CMDWEPROTNM;
-		break;
-	case MSPM0_FLASH_BASE_DATA:
-		*sector_mask = BIT((sector_in_bank / 8) % 32);
-		*reg = FCTL_REG_CMDWEPROTB;
 		break;
 	default:
 		/*
@@ -672,6 +669,7 @@ static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int add
 	default:
 		mspm0_fctl_get_sector_reg(bank, addr, &reg, &sector_mask);
 		target_write_u32(target, reg, ~sector_mask);
+		break;
 	}
 
 	return ret;
