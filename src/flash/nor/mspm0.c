@@ -731,6 +731,28 @@ static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 	return ERROR_OK;
 }
 
+static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
+{
+	struct target *target = bank->target;
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
+	int retval = ERROR_OK;
+
+	/* Unprotecting memory before performing a flash operation*/
+	retval = mspm0_fctl_unprotect_sector(bank, addr);
+	if (retval) {
+		LOG_ERROR("%s: Unprotecting sector of memory at address 0x%08" PRIx32
+					" failed", mspm0_info->name, addr);
+		return retval;
+	}
+
+	/* Configuring flashctl to perform sector erase*/
+	mspm0_fctl_cfg_command(bank, addr,
+		(FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR), 0);
+	target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
+	retval = msmp0_fctl_wait_cmd_ok(bank);
+	return retval;
+}
+
 static int mspm0_protect_reg_mainmap(struct flash_bank *bank, unsigned int sector,
 				     unsigned int *protect_reg_offset,
 				     unsigned int *protect_reg_bit)
@@ -958,10 +980,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 				  "(sector: %d)", mspm0_info->name, addr, csa);
 			return retval;
 		}
-		mspm0_fctl_cfg_command(bank, addr,
-			(FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR), 0);
-		target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
-		retval = msmp0_fctl_wait_cmd_ok(bank);
+		retval = mspm0_fctl_sector_erase(bank, addr);
 		if (retval) {
 			LOG_ERROR("%s: Failed Erasing at address 0x%08" PRIx32
 				  "(sector: %d)", mspm0_info->name, addr, csa);
