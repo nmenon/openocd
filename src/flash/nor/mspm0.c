@@ -63,7 +63,7 @@
 #define FCTL_CMDTYPE_SIZE_ONEWORD		(0x00000000U)
 #define FCTL_CMDTYPE_SIZE_SECTOR		(0x00000040U)
 
-/* FCTL_FEATURE_VER_B minimum*/
+/* FCTL_FEATURE_VER_B minimum */
 #define FCTL_FEATURE_VER_B				(0xA)
 
 #define MSPM0_MAX_PROTREGS				(3)
@@ -71,14 +71,14 @@
 #define MSPM0_FLASH_TIMEOUT_MS			(8000)
 #define ERR_STRING_MAX					(255)
 
-/* SYSCTL BASE*/
+/* SYSCTL BASE */
 #define SYSCTL_BASE						(0x400AF000U)
 #define SYSCTL_SECCFG_SECSTATUS			(SYSCTL_BASE + 0x00003048U)
 
-/* TI manufacturer ID*/
+/* TI manufacturer ID */
 #define TI_MANUFACTURER_ID				(0x17)
 
-/* Defines for probe status*/
+/* Defines for probe status */
 #define MSPM0_NO_ID_FOUND				(0)
 #define MSPM0_DEV_ID_FOUND				(1)
 #define MSPM0_DEV_PART_ID_FOUND			(2)
@@ -329,7 +329,7 @@ FLASH_BANK_COMMAND_HANDLER(mspm0_flash_bank_command)
 		return ERROR_FAIL;
 	}
 
-	mspm0_info = calloc(sizeof(struct mspm0_flash_bank), 1);
+	mspm0_info = calloc(1, sizeof(struct mspm0_flash_bank));
 	if (!mspm0_info) {
 		LOG_ERROR("%s: Out of memory for mspm0_info!", __func__);
 		return ERROR_FAIL;
@@ -464,7 +464,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 				mspm0_info->name);
 		break;
 	case MSPM0_DEV_ID_FOUND:
-			mspm0_info->name = mspm0_finf[minfo_idx].family_name;
+		mspm0_info->name = mspm0_finf[minfo_idx].family_name;
 		LOG_INFO("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
 				"], known DeviceID[0x%" PRIx32
 				"]. Attempting to proceed as %s.", part, variant, pnum,
@@ -531,6 +531,7 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	struct target *target = bank->target;
+	int ret = ERROR_OK;
 	unsigned int sector_num = (addr >> 10);
 	unsigned int sector_in_bank = sector_num;
 	unsigned int phys_sector_num = sector_num;
@@ -544,7 +545,8 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	 * than CMDWEPROTB. We also need to take into account what sector
 	 * we're using when going between banks.
 	 */
-	if (mspm0_info->main_flash_num_banks > 1) {
+	if (mspm0_info->main_flash_num_banks > 1 &&
+		bank->base == MSPM0_FLASH_BASE_MAIN) {
 		target_read_u32(target, SYSCTL_SECCFG_SECSTATUS, &sysctl_sec_status);
 		exec_upper_bank = mspm0_extract_val(sysctl_sec_status, 12, 12);
 		if (exec_upper_bank) {
@@ -562,46 +564,56 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	}
 
 	/*
-	 * NOTE: All MSPM0 devices will use CMDWEPROTA and CMDWEPROTB for MAIN
-	 * flash. CMDWEPROTC is included in the TRM/DATASHEET but for all
-	 * practical purposes, it is considered reserved.
+	 * NOTE: MSPM0 devices of version A will use CMDWEPROTA and CMDWEPROTB
+	 * for MAIN flash. CMDWEPROTC is included in the TRM/DATASHEET but for
+	 * all practical purposes, it is considered reserved. If the flash
+	 * version on the device is version B, then we will only use
+	 * CMDWEPROTB for MAIN and DATA flash if the device has it.
 	 */
-	if (sector_num < mspm0_info->main_flash_size_kb) {
-		/* Use CMDWEPROTA */
-		if (phys_sector_num < 32) {
-			*sector_mask = BIT(phys_sector_num);
-			*reg = FCTL_REG_CMDWEPROTA;
-			return ERROR_OK;
-		}
-
-		/* Use CMDWEPROTB */
-		if (sector_in_bank < 256) {
-			/* Dual bank system */
-			if (mspm0_info->main_flash_num_banks > 1) {
-				*sector_mask = BIT(sector_in_bank / 8);
-			} else {	/* Single bank system */
-				*sector_mask = BIT((sector_in_bank - 32) / 8);
+	switch (bank->base) {
+	case MSPM0_FLASH_BASE_MAIN:
+	case MSPM0_FLASH_BASE_DATA:
+		if (mspm0_info->flash_version < FCTL_FEATURE_VER_B) {
+			/* Use CMDWEPROTA */
+			if (phys_sector_num < 32) {
+				*sector_mask = BIT(phys_sector_num);
+				*reg = FCTL_REG_CMDWEPROTA;
 			}
+
+			/* Use CMDWEPROTB */
+			if (phys_sector_num >= 32 && sector_in_bank < 256) {
+				/* Dual bank system */
+				if (mspm0_info->main_flash_num_banks > 1) {
+					*sector_mask = BIT(sector_in_bank / 8);
+				} else {	/* Single bank system */
+					*sector_mask = BIT((sector_in_bank - 32) / 8);
+				}
+				*reg = FCTL_REG_CMDWEPROTB;
+			}
+		} else {
+			*sector_mask = BIT((sector_in_bank / 8) % 32);
 			*reg = FCTL_REG_CMDWEPROTB;
-			return ERROR_OK;
 		}
-	} else {
+		break;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		*sector_mask = BIT(sector_num % 32);
+		*reg = FCTL_REG_CMDWEPROTNM;
+		break;
+	default:
 		/*
-		 * Due to the consequences of NONMAIN memory we will perform an
-		 * additional check to confirm that the address being passed through
-		 * is NONMAIN flash. If the address passed through is not proper we
-		 * will return an error.
+		 * Not expected to reach here due to check in mspm0_address_check()
+		 * but adding it as another layer of safety.
 		 */
-		if (addr >= MSPM0_FLASH_BASE_NONMAIN && addr <= MSPM0_FLASH_END_NONMAIN) {
-			*sector_mask = BIT(sector_num % 32);
-			*reg = FCTL_REG_CMDWEPROTNM;
-			return ERROR_OK;
-		}
+		ret = ERROR_FLASH_DST_OUT_OF_BANK;
+		break;
 	}
 
-	LOG_ERROR("%s: Unable to map sector protect reg for address 0x%08" PRIx32,
-			  mspm0_info->name, addr);
-	return ERROR_FLASH_DST_OUT_OF_BANK;
+	if (ret != ERROR_OK) {
+		LOG_ERROR("%s: Unable to map sector protect reg for address 0x%08" PRIx32,
+					mspm0_info->name, addr);
+	}
+
+	return ret;
 }
 
 static int mspm0_address_check(struct flash_bank *bank, unsigned int addr)
@@ -658,6 +670,7 @@ static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int add
 	default:
 		mspm0_fctl_get_sector_reg(bank, addr, &reg, &sector_mask);
 		target_write_u32(target, reg, ~sector_mask);
+		break;
 	}
 
 	return ret;
@@ -703,7 +716,7 @@ static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 	}
 
 	if ((return_code & FCTL_STATCMD_CMDPASS_MASK) != FCTL_STATCMD_CMDPASS_STATPASS) {
-		char *error_string = calloc(sizeof(char), ERR_STRING_MAX + 1);
+		char *error_string = calloc(ERR_STRING_MAX + 1, sizeof(char));
 		if (error_string) {
 			msmp0_fctl_translate_ret_err(return_code, error_string);
 			LOG_ERROR("%s: Flash command failed: %s", mspm0_info->name,
@@ -717,6 +730,39 @@ static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 	}
 
 	return ERROR_OK;
+}
+
+static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
+{
+	struct target *target = bank->target;
+	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
+	int retval = ERROR_OK;
+
+	/*
+	 * TRM Says:
+	 * Note that the CMDWEPROTx registers are reset to a protected state
+	 * at the end of all program and erase operations.  These registers
+	 * must be re-configured by software before a new operation is
+	 * initiated.
+	 *
+	 * This means that as we start erasing sector by sector, the protection
+	 * registers are reset and need to be unprotected *again* for the next
+	 * erase operation. Unfortunately, this means that we cannot do a unitary
+	 * unprotect operation independent of flash erase operation
+	 */
+	retval = mspm0_fctl_unprotect_sector(bank, addr);
+	if (retval) {
+		LOG_ERROR("%s: Unprotecting sector of memory at address 0x%08" PRIx32
+					" failed", mspm0_info->name, addr);
+		return retval;
+	}
+
+	/* Actual erase operation */
+	mspm0_fctl_cfg_command(bank, addr,
+		(FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR), 0);
+	target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
+	retval = msmp0_fctl_wait_cmd_ok(bank);
+	return retval;
 }
 
 static int mspm0_protect_reg_mainmap(struct flash_bank *bank, unsigned int sector,
@@ -919,6 +965,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int i;
+	int retval = ERROR_OK;
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 
 	if (bank->target->state != TARGET_HALTED) {
@@ -936,41 +983,52 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 				&protect_reg_cache[i]);
 	}
 
-	for (unsigned int csa = first; csa < last; csa++) {
-		int retval;
-		unsigned int addr = csa * mspm0_info->sector_size;
-
-		retval = mspm0_fctl_unprotect_sector(bank, addr);
-		if (retval) {
-			LOG_ERROR("%s: Illegal access at address 0x%08" PRIx32
-				  "(sector: %d)", mspm0_info->name, addr, csa);
-			return retval;
+	switch (bank->base) {
+	case MSPM0_FLASH_BASE_MAIN:
+		for (unsigned int csa = first; csa <= last; csa++) {
+			unsigned int addr = csa * mspm0_info->sector_size;
+			retval = mspm0_fctl_sector_erase(bank, addr);
+			if (retval)
+				LOG_ERROR("%s: Sector erase on MAIN failed at address 0x%08"
+							PRIx32 "(sector: %d)", mspm0_info->name, addr, csa);
 		}
-		mspm0_fctl_cfg_command(bank, addr,
-			(FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR), 0);
-		target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
-		retval = msmp0_fctl_wait_cmd_ok(bank);
-		if (retval) {
-			LOG_ERROR("%s: Failed Erasing at address 0x%08" PRIx32
-				  "(sector: %d)", mspm0_info->name, addr, csa);
-			return retval;
+		break;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		retval = mspm0_fctl_sector_erase(bank, MSPM0_FLASH_BASE_NONMAIN);
+		if (retval)
+			LOG_ERROR("%s: Sector erase on NONMAIN failed", mspm0_info->name);
+		break;
+	case MSPM0_FLASH_BASE_DATA:
+		for (unsigned int csa = first; csa <= last; csa++) {
+			unsigned int addr = (MSPM0_FLASH_BASE_DATA +
+								(csa * mspm0_info->sector_size));
+			retval = mspm0_fctl_sector_erase(bank, addr);
+			if (retval)
+				LOG_ERROR("%s: Sector erase on DATA bank failed at address 0x%08"
+							PRIx32 "(sector: %d)", mspm0_info->name, addr, csa);
 		}
-		/*
-		 * TRM Says:
-		 * Note that the CMDWEPROTx registers are reset to a protected state
-		 * at the end of all program and erase operations.  These registers
-		 * must be re-configured by software before a new operation is
-		 * initiated
-		 * Let us just Dump the protection registers back to the system.
-		 * That way we retain the protection status as requested by the user
-		 */
-		for (i = 0; i < mspm0_info->protect_reg_count; i++) {
-			target_write_u32(target, mspm0_info->protect_reg_base + (i * 4),
-					 protect_reg_cache[i]);
-		}
+		break;
+	default:
+		LOG_ERROR("%s: Invalid memory region access", mspm0_info->name);
+		retval = ERROR_FLASH_BANK_INVALID;
+		break;
 	}
 
-	return ERROR_OK;
+	/*
+	 * TRM Says:
+	 * Note that the CMDWEPROTx registers are reset to a protected state
+	 * at the end of all program and erase operations.  These registers
+	 * must be re-configured by software before a new operation is
+	 * initiated
+	 * Let us just Dump the protection registers back to the system.
+	 * That way we retain the protection status as requested by the user
+	 */
+	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+		target_write_u32(target, mspm0_info->protect_reg_base + (i * 4),
+				 protect_reg_cache[i]);
+	}
+
+	return retval;
 }
 
 static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
@@ -979,6 +1037,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int i;
+	unsigned int addr = offset;
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 
 	/*
@@ -1017,6 +1076,22 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 				&protect_reg_cache[i]);
 	}
 
+	/* Add proper memory offset for bank being written to */
+	switch (bank->base) {
+	case MSPM0_FLASH_BASE_MAIN:
+		addr += MSPM0_FLASH_BASE_MAIN;
+		break;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		addr += MSPM0_FLASH_BASE_NONMAIN;
+		break;
+	case MSPM0_FLASH_BASE_DATA:
+		addr += MSPM0_FLASH_BASE_DATA;
+		break;
+	default:
+		LOG_ERROR("%s: Invalid bank of memory", mspm0_info->name);
+		return ERROR_FLASH_BANK_INVALID;
+	}
+
 	while (count) {
 		unsigned int num_bytes_to_write;
 		unsigned int data_reg = FCTL_REG_CMDDATA0;
@@ -1052,9 +1127,9 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			return ERROR_FAIL;
 		}
 
-		mspm0_fctl_cfg_command(bank, offset,
+		mspm0_fctl_cfg_command(bank, addr,
 			(FCTL_CMDTYPE_COMMAND_PROGRAM | FCTL_CMDTYPE_SIZE_ONEWORD), bytes_en);
-		retval = mspm0_fctl_unprotect_sector(bank, offset);
+		retval = mspm0_fctl_unprotect_sector(bank, addr);
 		if (retval)
 			return retval;
 
@@ -1072,7 +1147,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			buffer += sub_count;
 			data_reg += sub_count;
 			num_bytes_to_write -= sub_count;
-			offset += sub_count;
+			addr += sub_count;
 			count -= sub_count;
 		}
 
@@ -1081,20 +1156,21 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		retval = msmp0_fctl_wait_cmd_ok(bank);
 		if (retval)
 			return retval;
-		/*
-		 * TRM Says:
-		 * Note that the CMDWEPROTx registers are reset to a protected state
-		 * at the end of all program and erase operations.  These registers
-		 * must be re-configured by software before a new operation is
-		 * initiated
-		 * Let us just Dump the protection registers back to the system.
-		 * That way we retain the protection status as requested by the user
-		 */
-		for (i = 0; i < mspm0_info->protect_reg_count; i++) {
-			target_write_u32(target,
-					 mspm0_info->protect_reg_base + (i * 4),
-					 protect_reg_cache[i]);
-		}
+	}
+
+	/*
+	 * TRM Says:
+	 * Note that the CMDWEPROTx registers are reset to a protected state
+	 * at the end of all program and erase operations.  These registers
+	 * must be re-configured by software before a new operation is
+	 * initiated
+	 * Let us just Dump the protection registers back to the system.
+	 * That way we retain the protection status as requested by the user
+	 */
+	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+		target_write_u32(target,
+						 mspm0_info->protect_reg_base + (i * 4),
+						 protect_reg_cache[i]);
 	}
 
 	return ERROR_OK;
@@ -1128,7 +1204,7 @@ static int mspm0_probe(struct flash_bank *bank)
 
 	switch (bank->base) {
 	case MSPM0_FLASH_BASE_NONMAIN:
-		bank->size = 512;
+		bank->size = 1024;
 		bank->num_sectors = 0x1;
 		mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTNM;
 		mspm0_info->protect_reg_count = 1;
