@@ -953,6 +953,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int i;
+	int retval = ERROR_OK;
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 
 	if (bank->target->state != TARGET_HALTED) {
@@ -970,38 +971,52 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 				&protect_reg_cache[i]);
 	}
 
-	for (unsigned int csa = first; csa < last; csa++) {
-		int retval;
-		unsigned int addr = csa * mspm0_info->sector_size;
-
-		retval = mspm0_fctl_unprotect_sector(bank, addr);
-		if (retval) {
-			LOG_ERROR("%s: Illegal access at address 0x%08" PRIx32
-				  "(sector: %d)", mspm0_info->name, addr, csa);
-			return retval;
+	switch (bank->base) {
+	case MSPM0_FLASH_BASE_MAIN:
+		for (unsigned int csa = first; csa <= last; csa++) {
+			unsigned int addr = csa * mspm0_info->sector_size;
+			retval = mspm0_fctl_sector_erase(bank, (uint32_t)addr);
+			if (retval)
+				LOG_ERROR("%s: Sector erase on MAIN failed at address 0x%08"
+							PRIx32 "(sector: %d)", mspm0_info->name, addr, csa);
 		}
-		retval = mspm0_fctl_sector_erase(bank, addr);
-		if (retval) {
-			LOG_ERROR("%s: Failed Erasing at address 0x%08" PRIx32
-				  "(sector: %d)", mspm0_info->name, addr, csa);
-			return retval;
+		break;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		retval = mspm0_fctl_sector_erase(bank, MSPM0_FLASH_BASE_NONMAIN);
+		if (retval)
+			LOG_ERROR("%s: Sector erase on NONMAIN failed", mspm0_info->name);
+		break;
+	case MSPM0_FLASH_BASE_DATA:
+		for (unsigned int csa = first; csa <= last; csa++) {
+			unsigned int addr = (MSPM0_FLASH_BASE_DATA +
+								(csa * mspm0_info->sector_size));
+			retval = mspm0_fctl_sector_erase(bank, (uint32_t)addr);
+			if (retval)
+				LOG_ERROR("%s: Sector erase on DATA bank failed at address 0x%08"
+							PRIx32 "(sector: %d)", mspm0_info->name, addr, csa);
 		}
-		/*
-		 * TRM Says:
-		 * Note that the CMDWEPROTx registers are reset to a protected state
-		 * at the end of all program and erase operations.  These registers
-		 * must be re-configured by software before a new operation is
-		 * initiated
-		 * Let us just Dump the protection registers back to the system.
-		 * That way we retain the protection status as requested by the user
-		 */
-		for (i = 0; i < mspm0_info->protect_reg_count; i++) {
-			target_write_u32(target, mspm0_info->protect_reg_base + (i * 4),
-					 protect_reg_cache[i]);
-		}
+		break;
+	default:
+		LOG_ERROR("%s: Invalid memory region access", mspm0_info->name);
+		retval = ERROR_FLASH_BANK_INVALID;
+		break;
 	}
 
-	return ERROR_OK;
+	/*
+	 * TRM Says:
+	 * Note that the CMDWEPROTx registers are reset to a protected state
+	 * at the end of all program and erase operations.  These registers
+	 * must be re-configured by software before a new operation is
+	 * initiated
+	 * Let us just Dump the protection registers back to the system.
+	 * That way we retain the protection status as requested by the user
+	 */
+	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+		target_write_u32(target, mspm0_info->protect_reg_base + (i * 4),
+				 protect_reg_cache[i]);
+	}
+
+	return retval;
 }
 
 static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
@@ -1046,6 +1061,22 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		target_read_u32(target,
 				mspm0_info->protect_reg_base + (i * 4),
 				&protect_reg_cache[i]);
+	}
+
+	/* Adding proper memory offset for bank being written to */
+	switch (bank->base) {
+	case MSPM0_FLASH_BASE_MAIN:
+		offset+=MSPM0_FLASH_BASE_MAIN;
+		break;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		offset+=MSPM0_FLASH_BASE_NONMAIN;
+		break;
+	case MSPM0_FLASH_BASE_DATA:
+		offset+=MSPM0_FLASH_BASE_DATA;
+		break;
+	default:
+		LOG_ERROR("%s: Invalid bank of memory", mspm0_info->name);
+		return ERROR_FLASH_BANK_INVALID;
 	}
 
 	while (count) {
