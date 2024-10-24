@@ -1036,6 +1036,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int i;
+	unsigned int addr = offset;
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 
 	/*
@@ -1074,16 +1075,16 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 				&protect_reg_cache[i]);
 	}
 
-	/* Adding proper memory offset for bank being written to */
+	/* Add proper memory offset for bank being written to */
 	switch (bank->base) {
 	case MSPM0_FLASH_BASE_MAIN:
-		offset+=MSPM0_FLASH_BASE_MAIN;
+		addr += MSPM0_FLASH_BASE_MAIN;
 		break;
 	case MSPM0_FLASH_BASE_NONMAIN:
-		offset+=MSPM0_FLASH_BASE_NONMAIN;
+		addr += MSPM0_FLASH_BASE_NONMAIN;
 		break;
 	case MSPM0_FLASH_BASE_DATA:
-		offset+=MSPM0_FLASH_BASE_DATA;
+		addr += MSPM0_FLASH_BASE_DATA;
 		break;
 	default:
 		LOG_ERROR("%s: Invalid bank of memory", mspm0_info->name);
@@ -1125,9 +1126,9 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			return ERROR_FAIL;
 		}
 
-		mspm0_fctl_cfg_command(bank, offset,
+		mspm0_fctl_cfg_command(bank, addr,
 			(FCTL_CMDTYPE_COMMAND_PROGRAM | FCTL_CMDTYPE_SIZE_ONEWORD), bytes_en);
-		retval = mspm0_fctl_unprotect_sector(bank, offset);
+		retval = mspm0_fctl_unprotect_sector(bank, addr);
 		if (retval)
 			return retval;
 
@@ -1145,7 +1146,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			buffer += sub_count;
 			data_reg += sub_count;
 			num_bytes_to_write -= sub_count;
-			offset += sub_count;
+			addr += sub_count;
 			count -= sub_count;
 		}
 
@@ -1154,20 +1155,21 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		retval = msmp0_fctl_wait_cmd_ok(bank);
 		if (retval)
 			return retval;
-		/*
-		 * TRM Says:
-		 * Note that the CMDWEPROTx registers are reset to a protected state
-		 * at the end of all program and erase operations.  These registers
-		 * must be re-configured by software before a new operation is
-		 * initiated
-		 * Let us just Dump the protection registers back to the system.
-		 * That way we retain the protection status as requested by the user
-		 */
-		for (i = 0; i < mspm0_info->protect_reg_count; i++) {
-			target_write_u32(target,
-					 mspm0_info->protect_reg_base + (i * 4),
-					 protect_reg_cache[i]);
-		}
+	}
+
+	/*
+	 * TRM Says:
+	 * Note that the CMDWEPROTx registers are reset to a protected state
+	 * at the end of all program and erase operations.  These registers
+	 * must be re-configured by software before a new operation is
+	 * initiated
+	 * Let us just Dump the protection registers back to the system.
+	 * That way we retain the protection status as requested by the user
+	 */
+	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+		target_write_u32(target,
+						 mspm0_info->protect_reg_base + (i * 4),
+						 protect_reg_cache[i]);
 	}
 
 	return ERROR_OK;
