@@ -1159,7 +1159,7 @@ static int mspm0_probe(struct flash_bank *bank)
 
 	switch (bank->base) {
 	case MSPM0_FLASH_BASE_NONMAIN:
-		bank->size = 512;
+		bank->size = 1024;
 		bank->num_sectors = 0x1;
 		mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTNM;
 		mspm0_info->protect_reg_count = 1;
