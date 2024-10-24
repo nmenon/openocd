@@ -737,7 +737,18 @@ static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	int retval = ERROR_OK;
 
-	/* Unprotecting memory before performing a flash operation*/
+	/*
+	 * TRM Says:
+	 * Note that the CMDWEPROTx registers are reset to a protected state
+	 * at the end of all program and erase operations.  These registers
+	 * must be re-configured by software before a new operation is
+	 * initiated.
+	 *
+	 * This means that as we start erasing sector by sector, the protection
+	 * registers are reset and need to be unprotected *again* for the next
+	 * erase operation. Unfortunately, this means that we cannot do a unitary
+	 * unprotect operation independent of flash erase operation
+	 */
 	retval = mspm0_fctl_unprotect_sector(bank, addr);
 	if (retval) {
 		LOG_ERROR("%s: Unprotecting sector of memory at address 0x%08" PRIx32
@@ -745,7 +756,7 @@ static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 		return retval;
 	}
 
-	/* Configuring flashctl to perform sector erase*/
+	/* Actual erase operation*/
 	mspm0_fctl_cfg_command(bank, addr,
 		(FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR), 0);
 	target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
