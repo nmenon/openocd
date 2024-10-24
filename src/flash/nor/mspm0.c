@@ -63,7 +63,7 @@
 #define FCTL_CMDTYPE_SIZE_ONEWORD		(0x00000000U)
 #define FCTL_CMDTYPE_SIZE_SECTOR		(0x00000040U)
 
-/* FCTL_FEATURE_VER_B minimum*/
+/* FCTL_FEATURE_VER_B minimum */
 #define FCTL_FEATURE_VER_B				(0xA)
 
 #define MSPM0_MAX_PROTREGS				(3)
@@ -71,14 +71,14 @@
 #define MSPM0_FLASH_TIMEOUT_MS			(8000)
 #define ERR_STRING_MAX					(255)
 
-/* SYSCTL BASE*/
+/* SYSCTL BASE */
 #define SYSCTL_BASE						(0x400AF000U)
 #define SYSCTL_SECCFG_SECSTATUS			(SYSCTL_BASE + 0x00003048U)
 
-/* TI manufacturer ID*/
+/* TI manufacturer ID */
 #define TI_MANUFACTURER_ID				(0x17)
 
-/* Defines for probe status*/
+/* Defines for probe status */
 #define MSPM0_NO_ID_FOUND				(0)
 #define MSPM0_DEV_ID_FOUND				(1)
 #define MSPM0_DEV_PART_ID_FOUND			(2)
@@ -757,7 +757,7 @@ static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 		return retval;
 	}
 
-	/* Actual erase operation*/
+	/* Actual erase operation */
 	mspm0_fctl_cfg_command(bank, addr,
 		(FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR), 0);
 	target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
