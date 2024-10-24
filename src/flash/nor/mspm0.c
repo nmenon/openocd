@@ -545,7 +545,8 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	 * than CMDWEPROTB. We also need to take into account what sector
 	 * we're using when going between banks.
 	 */
-	if (mspm0_info->main_flash_num_banks > 1) {
+	if (mspm0_info->main_flash_num_banks > 1 &&
+		bank->base == MSPM0_FLASH_BASE_MAIN) {
 		target_read_u32(target, SYSCTL_SECCFG_SECSTATUS, &sysctl_sec_status);
 		exec_upper_bank = mspm0_extract_val(sysctl_sec_status, 12, 12);
 		if (exec_upper_bank) {
