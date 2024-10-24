@@ -987,7 +987,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	case MSPM0_FLASH_BASE_MAIN:
 		for (unsigned int csa = first; csa <= last; csa++) {
 			unsigned int addr = csa * mspm0_info->sector_size;
-			retval = mspm0_fctl_sector_erase(bank, (uint32_t)addr);
+			retval = mspm0_fctl_sector_erase(bank, addr);
 			if (retval)
 				LOG_ERROR("%s: Sector erase on MAIN failed at address 0x%08"
 							PRIx32 "(sector: %d)", mspm0_info->name, addr, csa);
@@ -1002,7 +1002,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 		for (unsigned int csa = first; csa <= last; csa++) {
 			unsigned int addr = (MSPM0_FLASH_BASE_DATA +
 								(csa * mspm0_info->sector_size));
-			retval = mspm0_fctl_sector_erase(bank, (uint32_t)addr);
+			retval = mspm0_fctl_sector_erase(bank, addr);
 			if (retval)
 				LOG_ERROR("%s: Sector erase on DATA bank failed at address 0x%08"
 							PRIx32 "(sector: %d)", mspm0_info->name, addr, csa);
