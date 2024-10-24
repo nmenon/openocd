@@ -329,7 +329,7 @@ FLASH_BANK_COMMAND_HANDLER(mspm0_flash_bank_command)
 		return ERROR_FAIL;
 	}
 
-	mspm0_info = calloc(sizeof(struct mspm0_flash_bank), 1);
+	mspm0_info = calloc(1, sizeof(struct mspm0_flash_bank));
 	if (!mspm0_info) {
 		LOG_ERROR("%s: Out of memory for mspm0_info!", __func__);
 		return ERROR_FAIL;
@@ -716,7 +716,7 @@ static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
 	}
 
 	if ((return_code & FCTL_STATCMD_CMDPASS_MASK) != FCTL_STATCMD_CMDPASS_STATPASS) {
-		char *error_string = calloc(sizeof(char), ERR_STRING_MAX + 1);
+		char *error_string = calloc(ERR_STRING_MAX + 1, sizeof(char));
 		if (error_string) {
 			msmp0_fctl_translate_ret_err(return_code, error_string);
 			LOG_ERROR("%s: Flash command failed: %s", mspm0_info->name,
