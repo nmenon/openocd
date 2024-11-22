@@ -7296,6 +7296,23 @@ halt
 flash erase_sector 1 0 last
 flash write_image NONMAIN.hex 0x41C00000
 @end example
+
+@deffn {Command} {mspm0 mspm0_board_reset}
+Performs an nRST toggle on the device.
+@end deffn
+
+@deffn {Command} {mspm0 mspm0_mass_erase }
+Sends the mass erase command to the SEC-AP mailbox and then performs 
+an nRST toggle. Once the command has been fully processed by the ROM,
+all MAIN memory will be erased.
+@end deffn
+
+@deffn {Command} {mspm0 mspm0_factory_reset }
+Sends the factory reset command to the SEC-AP mailbox and then performs 
+an nRST toggle. Once the command has been fully processed by the ROM,
+all MAIN memory will be erased and NONMAIN will be reset to its default
+values.
+@end deffn
 @end deffn
 
 @deffn {Flash Driver} {niietcm4}
