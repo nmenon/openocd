@@ -7282,6 +7282,20 @@ optional region called "Data" starts at 0x41d00000.
 @example
 flash bank $_FLASHNAME mspm0 0 0 0 0 $_TARGETNAME
 @end example
+
+To erase and program the MAIN region:
+@example
+halt
+flash erase_sector 0 0 last
+flash write_image MAIN.hex
+@end example
+
+To erase and program the NONMAIN region:
+@example
+halt
+flash erase_sector 1 0 last
+flash write_image NONMAIN.hex 0x41C00000
+@end example
 @end deffn
 
 @deffn {Flash Driver} {niietcm4}
