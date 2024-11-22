@@ -90,7 +90,6 @@ struct mspm0_flash_bank {
 	uint32_t traceid;
 	unsigned char version;
 
-	/* Pointer to name */
 	const char *name;
 
 	/* Decoded flash information */
