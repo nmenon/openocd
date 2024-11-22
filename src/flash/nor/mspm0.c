@@ -378,8 +378,6 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	uint32_t did, userid, flashram, flashdesc;
 	unsigned char minfo_idx = 0xff;
 	unsigned char pinfo_idx = 0xff;
-	unsigned short pnum, part, manufacturer;
-	unsigned char variant, version;
 	unsigned char probe_status = MSPM0_NO_ID_FOUND;
 	const struct mspm0_family_info *minfo = NULL;
 
@@ -390,11 +388,11 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	target_read_u32(target, MSPM0_SRAMFLASH, &flashram);
 	target_read_u32(target, FCTL_REG_DESC, &flashdesc);
 
-	version = mspm0_extract_val(did, 31, 28);
-	pnum = mspm0_extract_val(did, 27, 12);
-	variant = mspm0_extract_val(userid, 23, 16);
-	part = mspm0_extract_val(userid, 15, 0);
-	manufacturer = mspm0_extract_val(did, 11, 1);
+	unsigned char version = mspm0_extract_val(did, 31, 28);
+	unsigned short pnum = mspm0_extract_val(did, 27, 12);
+	unsigned char variant = mspm0_extract_val(userid, 23, 16);
+	unsigned short part = mspm0_extract_val(userid, 15, 0);
+	unsigned short manufacturer = mspm0_extract_val(did, 11, 1);
 
 	/*
 	 * Valid DIE and manufacturer ID?
