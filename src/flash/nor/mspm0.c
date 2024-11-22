@@ -848,25 +848,24 @@ static int mspm0_protect_check(struct flash_bank *bank)
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 	unsigned int protect_reg_offset, protect_reg_bit;
-	unsigned int i;
 
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
-	for (i = 0; i < bank->num_sectors; i++)
+	for (unsigned int i = 0; i < bank->num_sectors; i++)
 		bank->sectors[i].is_protected = -1;
 
 	if (!mspm0_info->protect_reg_count)
 		return ERROR_OK;
 
 	/* Do a single scan read of regs before we set the status */
-	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
 		target_read_u32(target,
 				mspm0_info->protect_reg_base + (i * 4),
 				&protect_reg_cache[i]);
 	}
 
-	for (i = 0; i < bank->num_sectors; i++) {
+	for (unsigned int i = 0; i < bank->num_sectors; i++) {
 		int retval = mspm0_protect_reg_map(bank, i, &protect_reg_offset,
 						   &protect_reg_bit);
 		if (retval) {
@@ -889,7 +888,6 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 	unsigned int protect_reg_offset, protect_reg_bit;
-	unsigned int i;
 	int retval;
 
 	if (mspm0_info->did == 0)
@@ -905,7 +903,7 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 	 */
 
 	/* Do a single scan read of regs before we set the status */
-	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
 		target_read_u32(target,
 				mspm0_info->protect_reg_base + (i * 4),
 				&protect_reg_cache[i]);
@@ -913,7 +911,7 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 	/* Flip to binary value */
 	set = !!set;
 	/* Now set the bits that we need to set with */
-	for (i = first; i <= last; i++) {
+	for (unsigned int i = first; i <= last; i++) {
 		retval =
 		    mspm0_protect_reg_map(bank, i, &protect_reg_offset, &protect_reg_bit);
 
@@ -929,7 +927,7 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 			protect_reg_cache[protect_reg_offset] &= ~BIT(protect_reg_bit);
 	}
 
-	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
 		target_write_u32(target,
 				 mspm0_info->protect_reg_base + (i * 4),
 				 protect_reg_cache[i]);
@@ -939,7 +937,7 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 	 * Update our local state data base, since single bit can protect up to
 	 * 8 sectors in some banks
 	 */
-	for (i = 0; i < bank->num_sectors; i++) {
+	for (unsigned int i = 0; i < bank->num_sectors; i++) {
 		retval =
 		    mspm0_protect_reg_map(bank, i, &protect_reg_offset, &protect_reg_bit);
 		if (retval) {
@@ -960,7 +958,6 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	unsigned int i;
 	int retval = ERROR_OK;
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 
@@ -973,7 +970,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
 	/* Pick a copy of the current protection config for later restoration */
-	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
 		target_read_u32(target,
 				mspm0_info->protect_reg_base + (i * 4),
 				&protect_reg_cache[i]);
@@ -1019,7 +1016,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	 * Let us just Dump the protection registers back to the system.
 	 * That way we retain the protection status as requested by the user
 	 */
-	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
 		target_write_u32(target, mspm0_info->protect_reg_base + (i * 4),
 				 protect_reg_cache[i]);
 	}
@@ -1032,7 +1029,6 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	unsigned int i;
 	unsigned int addr = offset;
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 
@@ -1066,7 +1062,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	 * We need to restore these regs after every write, so instead of trying
 	 * to figure things out on the fly, we just context save and restore
 	 */
-	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
 		target_read_u32(target,
 				mspm0_info->protect_reg_base + (i * 4),
 				&protect_reg_cache[i]);
@@ -1163,7 +1159,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	 * Let us just Dump the protection registers back to the system.
 	 * That way we retain the protection status as requested by the user
 	 */
-	for (i = 0; i < mspm0_info->protect_reg_count; i++) {
+	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
 		target_write_u32(target,
 						 mspm0_info->protect_reg_base + (i * 4),
 						 protect_reg_cache[i]);
