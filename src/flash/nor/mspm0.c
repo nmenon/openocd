@@ -697,7 +697,7 @@ static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int add
 	return ret;
 }
 
-static void mspm0_fctl_cfg_command(struct flash_bank *bank, uint32_t addr, uint32_t cmd, uint32_t byte_en)
+static int mspm0_fctl_cfg_command(struct flash_bank *bank, uint32_t addr, uint32_t cmd, uint32_t byte_en)
 {
 	struct target *target = bank->target;
 
@@ -706,10 +706,18 @@ static void mspm0_fctl_cfg_command(struct flash_bank *bank, uint32_t addr, uint3
 	 * bits if needed, and then set the address where the flash operation
 	 * will execute.
 	 */
-	target_write_u32(target, FCTL_REG_CMDTYPE, cmd);
-	if (byte_en != 0)
-		target_write_u32(target, FCTL_REG_CMDBYTEN, byte_en);
-	target_write_u32(target, FCTL_REG_CMDADDR, addr);
+	int retval = target_write_u32(target, FCTL_REG_CMDTYPE, cmd);
+	if (retval)
+		goto flash_cfg_error;
+	if (byte_en != 0){
+		retval = target_write_u32(target, FCTL_REG_CMDBYTEN, byte_en);
+		if (retval)
+			goto flash_cfg_error;
+	}
+	retval = target_write_u32(target, FCTL_REG_CMDADDR, addr);
+
+flash_cfg_error:
+	return retval;
 }
 
 static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
@@ -778,10 +786,15 @@ static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 	}
 
 	/* Actual erase operation */
-	mspm0_fctl_cfg_command(bank, addr,
-		(FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR), 0);
-	target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
+	retval = mspm0_fctl_cfg_command(bank, addr,
+			(FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR), 0);
+	if (retval)
+		return retval;
+	retval = target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
+	if (retval)
+		return retval;
 	retval = msmp0_fctl_wait_cmd_ok(bank);
+
 	return retval;
 }
 
@@ -872,6 +885,7 @@ static int mspm0_protect_check(struct flash_bank *bank)
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 	unsigned int protect_reg_offset, protect_reg_bit;
+	int retval;
 
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
@@ -884,13 +898,18 @@ static int mspm0_protect_check(struct flash_bank *bank)
 
 	/* Do a single scan read of regs before we set the status */
 	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
-		target_read_u32(target,
-				mspm0_info->protect_reg_base + (i * 4),
-				&protect_reg_cache[i]);
+		retval = target_read_u32(target,
+						mspm0_info->protect_reg_base + (i * 4),
+						&protect_reg_cache[i]);
+		if (retval) {
+			LOG_ERROR("%s: Failed reading protect reg %d, error value: %d",
+						mspm0_info->name, i, retval);
+			continue;
+		}
 	}
 
 	for (unsigned int i = 0; i < bank->num_sectors; i++) {
-		int retval = mspm0_protect_reg_map(bank, i, &protect_reg_offset,
+		retval = mspm0_protect_reg_map(bank, i, &protect_reg_offset,
 						   &protect_reg_bit);
 		if (retval) {
 			LOG_ERROR("%s: sector %d: protect reg decode err: %d",
@@ -902,7 +921,7 @@ static int mspm0_protect_check(struct flash_bank *bank)
 		    protect_reg_cache[protect_reg_offset] & BIT(protect_reg_bit) ? 1 : 0;
 	}
 
-	return ERROR_OK;
+	return retval;
 }
 
 static int mspm0_protect(struct flash_bank *bank, int set,
@@ -1143,8 +1162,10 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			return ERROR_FAIL;
 		}
 
-		mspm0_fctl_cfg_command(bank, addr,
-			(FCTL_CMDTYPE_COMMAND_PROGRAM | FCTL_CMDTYPE_SIZE_ONEWORD), bytes_en);
+		retval = mspm0_fctl_cfg_command(bank, addr,
+					(FCTL_CMDTYPE_COMMAND_PROGRAM | FCTL_CMDTYPE_SIZE_ONEWORD), bytes_en);
+		if (retval)
+			return retval;
 		retval = mspm0_fctl_unprotect_sector(bank, addr);
 		if (retval)
 			return retval;
