@@ -565,7 +565,9 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	 */
 	if (mspm0_info->main_flash_num_banks > 1 &&
 		bank->base == MSPM0_FLASH_BASE_MAIN) {
-		target_read_u32(target, SYSCTL_SECCFG_SECSTATUS, &sysctl_sec_status);
+		ret = target_read_u32(target, SYSCTL_SECCFG_SECSTATUS, &sysctl_sec_status);
+		if (ret != ERROR_OK)
+			goto error;
 		exec_upper_bank = mspm0_extract_val(sysctl_sec_status, 12, 12);
 		if (exec_upper_bank) {
 			if (sector_num > (mspm0_info->main_flash_size_kb / 2)) {
@@ -631,6 +633,7 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 					mspm0_info->name, addr);
 	}
 
+error:
 	return ret;
 }
 
