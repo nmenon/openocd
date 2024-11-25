@@ -1025,9 +1025,14 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 
 	/* Pick a copy of the current protection config for later restoration */
 	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
-		target_read_u32(target,
-				mspm0_info->protect_reg_base + (i * 4),
-				&protect_reg_cache[i]);
+		retval = target_read_u32(target,
+								 mspm0_info->protect_reg_base + (i * 4),
+								 &protect_reg_cache[i]);
+		if (retval) {
+			LOG_ERROR("%s: Failed saving flashctl protection status",
+						mspm0_info->name);
+			return retval;
+		}
 	}
 
 	switch (bank->base) {
@@ -1071,8 +1076,13 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	 * That way we retain the protection status as requested by the user
 	 */
 	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
-		target_write_u32(target, mspm0_info->protect_reg_base + (i * 4),
-				 protect_reg_cache[i]);
+		retval = target_write_u32(target, mspm0_info->protect_reg_base + (i * 4),
+					protect_reg_cache[i]);
+		if (retval) {
+			LOG_ERROR("%s: Failed re-applying protection status of flashctl",
+						mspm0_info->name);
+			break;
+		}
 	}
 
 	return retval;
