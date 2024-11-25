@@ -690,7 +690,7 @@ static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int add
 		break;
 	default:
 		mspm0_fctl_get_sector_reg(bank, addr, &reg, &sector_mask);
-		target_write_u32(target, reg, ~sector_mask);
+		ret = target_write_u32(target, reg, ~sector_mask);
 		break;
 	}
 
