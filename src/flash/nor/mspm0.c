@@ -382,11 +382,31 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	const struct mspm0_family_info *minfo = NULL;
 
 	/* Read and parse chip identification and flash version register */
-	target_read_u32(target, MSPM0_DID, &did);
-	target_read_u32(target, MSPM0_TRACEID, &mspm0_info->traceid);
-	target_read_u32(target, MSPM0_USERID, &userid);
-	target_read_u32(target, MSPM0_SRAMFLASH, &flashram);
-	target_read_u32(target, FCTL_REG_DESC, &flashdesc);
+	int retval = target_read_u32(target, MSPM0_DID, &did);
+	if (retval != ERROR_OK) {
+		LOG_ERROR("Failed to read device ID");
+		goto read_error;
+	}
+	retval = target_read_u32(target, MSPM0_TRACEID, &mspm0_info->traceid);
+	if (retval != ERROR_OK) {
+		LOG_ERROR("Failed to read trace ID");
+		goto read_error;
+	}
+	retval = target_read_u32(target, MSPM0_USERID, &userid);
+	if (retval != ERROR_OK) {
+		LOG_ERROR("Failed to read user ID");
+		goto read_error;
+	}
+	retval = target_read_u32(target, MSPM0_SRAMFLASH, &flashram);
+	if (retval != ERROR_OK) {
+		LOG_ERROR("Failed to read sramflash register");
+		goto read_error;
+	}
+	retval = target_read_u32(target, FCTL_REG_DESC, &flashdesc);
+	if (retval != ERROR_OK) {
+		LOG_ERROR("Failed to read flashctl description register");
+		goto read_error;
+	}
 
 	unsigned char version = mspm0_extract_val(did, 31, 28);
 	unsigned short pnum = mspm0_extract_val(did, 27, 12);
@@ -494,7 +514,8 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 		  mspm0_info->main_flash_size_kb, mspm0_info->main_flash_num_banks,
 		  mspm0_info->sram_size_kb, mspm0_info->data_flash_size_kb);
 
-	return ERROR_OK;
+read_error:
+	return retval;
 }
 
 /*
