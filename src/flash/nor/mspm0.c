@@ -947,9 +947,14 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 
 	/* Do a single scan read of regs before we set the status */
 	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
-		target_read_u32(target,
-				mspm0_info->protect_reg_base + (i * 4),
-				&protect_reg_cache[i]);
+		retval = target_read_u32(target,
+								 mspm0_info->protect_reg_base + (i * 4),
+								 &protect_reg_cache[i]);
+		if (retval) {
+			LOG_ERROR("%s: Failed reading protect reg %d, error value: %d",
+						mspm0_info->name, i, retval);
+			continue;
+		}
 	}
 	/* Flip to binary value */
 	set = !!set;
@@ -971,9 +976,15 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 	}
 
 	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
-		target_write_u32(target,
-				 mspm0_info->protect_reg_base + (i * 4),
-				 protect_reg_cache[i]);
+		retval = target_write_u32(target,
+								  mspm0_info->protect_reg_base + (i * 4),
+				                  protect_reg_cache[i]);
+		/* If we fail applying protection then throw an error*/
+		if (retval) {
+			LOG_ERROR("%s: Failed writing to protect reg %d, error value: %d",
+						mspm0_info->name, i, retval);
+			return retval;
+		}
 	}
 
 	/*
@@ -994,7 +1005,7 @@ static int mspm0_protect(struct flash_bank *bank, int set,
 		    protect_reg_cache[protect_reg_offset] & BIT(protect_reg_bit);
 	}
 
-	return ERROR_OK;
+	return retval;
 }
 
 static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int last)
