@@ -1095,6 +1095,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int addr = offset;
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
+	int retval;
 
 	/*
 	 * XXX: TRM Says:
@@ -1127,9 +1128,14 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	 * to figure things out on the fly, we just context save and restore
 	 */
 	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
-		target_read_u32(target,
-				mspm0_info->protect_reg_base + (i * 4),
-				&protect_reg_cache[i]);
+		retval = target_read_u32(target,
+								 mspm0_info->protect_reg_base + (i * 4),
+								 &protect_reg_cache[i]);
+		if (retval) {
+			LOG_ERROR("%s: Failed saving flashctl protection status",
+						mspm0_info->name);
+			return retval;
+		}
 	}
 
 	/* Add proper memory offset for bank being written to */
@@ -1152,7 +1158,6 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		unsigned int num_bytes_to_write;
 		unsigned int data_reg = FCTL_REG_CMDDATA0;
 		uint32_t bytes_en;
-		int retval;
 
 		/*
 		 * If count is not 64 bit aligned, we will do byte wise op to keep things simple
@@ -1198,7 +1203,9 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			/* Make sure alignments are handled correctly */
 			(void)memcpy(&write_value, buffer, sizeof(unsigned int));
 
-			target_write_u32(target, data_reg, write_value);
+			retval = target_write_u32(target, data_reg, write_value);
+			if(retval)
+				return retval;
 			sub_count =
 			    (num_bytes_to_write <
 			     sizeof(unsigned int)) ? num_bytes_to_write : 4;
@@ -1209,7 +1216,9 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			count -= sub_count;
 		}
 
-		target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
+		retval = target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
+		if (retval)
+			return retval;
 
 		retval = msmp0_fctl_wait_cmd_ok(bank);
 		if (retval)
@@ -1226,12 +1235,17 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	 * That way we retain the protection status as requested by the user
 	 */
 	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
-		target_write_u32(target,
-						 mspm0_info->protect_reg_base + (i * 4),
-						 protect_reg_cache[i]);
+		retval = target_write_u32(target,
+								  mspm0_info->protect_reg_base + (i * 4),
+								  protect_reg_cache[i]);
+		if (retval) {
+			LOG_ERROR("%s: Failed re-applying protection status of flashctl",
+						mspm0_info->name);
+			break;
+		}
 	}
 
-	return ERROR_OK;
+	return retval;
 }
 
 static int mspm0_probe(struct flash_bank *bank)
