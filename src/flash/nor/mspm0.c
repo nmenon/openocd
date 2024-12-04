@@ -731,7 +731,7 @@ flash_cfg_error:
 	return retval;
 }
 
-static int msmp0_fctl_wait_cmd_ok(struct flash_bank *bank)
+static int mspm0_fctl_wait_cmd_ok(struct flash_bank *bank)
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
@@ -804,7 +804,7 @@ static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 	retval = target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
 	if (retval)
 		return retval;
-	retval = msmp0_fctl_wait_cmd_ok(bank);
+	retval = mspm0_fctl_wait_cmd_ok(bank);
 
 	return retval;
 }
@@ -1238,7 +1238,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		if (retval)
 			return retval;
 
-		retval = msmp0_fctl_wait_cmd_ok(bank);
+		retval = mspm0_fctl_wait_cmd_ok(bank);
 		if (retval)
 			return retval;
 	}
