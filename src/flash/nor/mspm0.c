@@ -843,6 +843,7 @@ static int mspm0_protect_reg_mainmap(struct flash_bank *bank, unsigned int secto
 	}
 	*protect_reg_offset = 2;
 	*protect_reg_bit = (sector_in_bank - 256) / 8;
+
 	return ERROR_OK;
 }
 
