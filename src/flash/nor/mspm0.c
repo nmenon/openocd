@@ -377,13 +377,10 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	struct target *target = bank->target;
-	uint32_t did, userid, flashram, flashdesc;
-	unsigned char minfo_idx = 0xff;
-	unsigned char pinfo_idx = 0xff;
-	unsigned char probe_status = MSPM0_NO_ID_FOUND;
 	const struct mspm0_family_info *minfo = NULL;
 
 	/* Read and parse chip identification and flash version register */
+	uint32_t did;
 	int retval = target_read_u32(target, MSPM0_DID, &did);
 	if (retval != ERROR_OK) {
 		LOG_ERROR("Failed to read device ID");
@@ -394,16 +391,19 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 		LOG_ERROR("Failed to read trace ID");
 		return retval;
 	}
+	uint32_t userid;
 	retval = target_read_u32(target, MSPM0_USERID, &userid);
 	if (retval != ERROR_OK) {
 		LOG_ERROR("Failed to read user ID");
 		return retval;
 	}
+	uint32_t flashram;
 	retval = target_read_u32(target, MSPM0_SRAMFLASH, &flashram);
 	if (retval != ERROR_OK) {
 		LOG_ERROR("Failed to read sramflash register");
 		return retval;
 	}
+	uint32_t flashdesc;
 	retval = target_read_u32(target, FCTL_REG_DESC, &flashdesc);
 	if (retval != ERROR_OK) {
 		LOG_ERROR("Failed to read flashctl description register");
@@ -434,6 +434,10 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 		return ERROR_FLASH_OPERATION_FAILED;
 	}
 
+	/* Initialize master index selector and probe status*/
+	unsigned char minfo_idx = 0xff;
+	unsigned char probe_status = MSPM0_NO_ID_FOUND;
+
 	/* Check if we at least know the family of devices */
 	for (unsigned int i = 0; i < ARRAY_SIZE(mspm0_finf); i++) {
 		if (mspm0_finf[i].part_num == pnum) {
@@ -443,6 +447,9 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 			break;
 		}
 	}
+
+	/* Initialize part index selector*/
+	unsigned char pinfo_idx = 0xff;
 
 	/*
 	 * If we can identify the part number then we will attempt to identify
