@@ -541,15 +541,16 @@ static const struct {
 	{ 12, "FAILMISC" },
 };
 
-static void mspm0_fctl_translate_ret_err(unsigned int return_code, char *ret_str)
+static const char * mspm0_fctl_translate_ret_err(unsigned int return_code)
 {
 	for (unsigned int i = 0; i < ARRAY_SIZE(mspm0_fctl_fail_decode_strings); i++) {
 		if (return_code & BIT(mspm0_fctl_fail_decode_strings[i].bit_offset)) {
-			strncat(ret_str, mspm0_fctl_fail_decode_strings[i].fail_string,
-				ERR_STRING_MAX);
-			strncat(ret_str, " ", ERR_STRING_MAX);
+			return (mspm0_fctl_fail_decode_strings[i].fail_string);
 		}
 	}
+
+	/* If unknown error notify the user*/
+	return ("FAILUNKNOWN");
 }
 
 static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
@@ -757,7 +758,8 @@ static int mspm0_fctl_wait_cmd_ok(struct flash_bank *bank)
 	if ((return_code & FCTL_STATCMD_CMDPASS_MASK) != FCTL_STATCMD_CMDPASS_STATPASS) {
 		char *error_string = calloc(ERR_STRING_MAX + 1, sizeof(char));
 		if (error_string) {
-			mspm0_fctl_translate_ret_err(return_code, error_string);
+			strncat(error_string, mspm0_fctl_translate_ret_err(return_code),
+					ERR_STRING_MAX);
 			LOG_ERROR("%s: Flash command failed: %s", mspm0_info->name,
 				error_string);
 			free(error_string);
