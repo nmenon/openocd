@@ -321,13 +321,13 @@ FLASH_BANK_COMMAND_HANDLER(mspm0_flash_bank_command)
 	struct mspm0_flash_bank *mspm0_info;
 
 	switch (bank->base) {
-		case MSPM0_FLASH_BASE_NONMAIN:
-		case MSPM0_FLASH_BASE_MAIN:
-		case MSPM0_FLASH_BASE_DATA:
-			break;
-		default:
-			LOG_ERROR("Invalid bank address " TARGET_ADDR_FMT, bank->base);
-			return ERROR_FAIL;
+	case MSPM0_FLASH_BASE_NONMAIN:
+	case MSPM0_FLASH_BASE_MAIN:
+	case MSPM0_FLASH_BASE_DATA:
+		break;
+	default:
+		LOG_ERROR("Invalid bank address " TARGET_ADDR_FMT, bank->base);
+		return ERROR_FAIL;
 	}
 
 	mspm0_info = calloc(1, sizeof(struct mspm0_flash_bank));
@@ -475,25 +475,25 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	 * can be made.
 	 */
 	switch (probe_status) {
-		case MSPM0_NO_ID_FOUND:
-			mspm0_info->name = "mspm0x";
-			LOG_INFO("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
-			"], unknown DeviceID[0x%" PRIx32
-			"]. Attempting to proceed as %s.", part, variant, pnum,
-			mspm0_info->name);
-			break;
-		case MSPM0_DEV_ID_FOUND:
-			mspm0_info->name = mspm0_finf[minfo_idx].family_name;
-			LOG_INFO("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
-			"], known DeviceID[0x%" PRIx32
-			"]. Attempting to proceed as %s.", part, variant, pnum,
-			mspm0_info->name);
-			break;
-		case MSPM0_DEV_PART_ID_FOUND:
-		default:
-			mspm0_info->name = mspm0_finf[minfo_idx].part_info[pinfo_idx].part_name;
-			LOG_DEBUG("Part: %s detected", mspm0_info->name);
-			break;
+	case MSPM0_NO_ID_FOUND:
+		mspm0_info->name = "mspm0x";
+		LOG_INFO("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
+		"], unknown DeviceID[0x%" PRIx32
+		"]. Attempting to proceed as %s.", part, variant, pnum,
+		mspm0_info->name);
+		break;
+	case MSPM0_DEV_ID_FOUND:
+		mspm0_info->name = mspm0_finf[minfo_idx].family_name;
+		LOG_INFO("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
+		"], known DeviceID[0x%" PRIx32
+		"]. Attempting to proceed as %s.", part, variant, pnum,
+		mspm0_info->name);
+		break;
+	case MSPM0_DEV_PART_ID_FOUND:
+	default:
+		mspm0_info->name = mspm0_finf[minfo_idx].part_info[pinfo_idx].part_name;
+		LOG_DEBUG("Part: %s detected", mspm0_info->name);
+		break;
 	}
 
 	mspm0_info->did = did;
@@ -592,40 +592,40 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	 * CMDWEPROTB for MAIN and DATA flash if the device has it.
 	 */
 	switch (bank->base) {
-		case MSPM0_FLASH_BASE_MAIN:
-		case MSPM0_FLASH_BASE_DATA:
-			if (mspm0_info->flash_version < FCTL_FEATURE_VER_B) {
-				/* Use CMDWEPROTA */
-				if (phys_sector_num < 32) {
-					*sector_mask = BIT(phys_sector_num);
-					*reg = FCTL_REG_CMDWEPROTA;
-				}
+	case MSPM0_FLASH_BASE_MAIN:
+	case MSPM0_FLASH_BASE_DATA:
+		if (mspm0_info->flash_version < FCTL_FEATURE_VER_B) {
+			/* Use CMDWEPROTA */
+			if (phys_sector_num < 32) {
+				*sector_mask = BIT(phys_sector_num);
+				*reg = FCTL_REG_CMDWEPROTA;
+			}
 
-				/* Use CMDWEPROTB */
-				if (phys_sector_num >= 32 && sector_in_bank < 256) {
-					/* Dual bank system */
-					if (mspm0_info->main_flash_num_banks > 1)
-						*sector_mask = BIT(sector_in_bank / 8);
-					else	/* Single bank system */
-						*sector_mask = BIT((sector_in_bank - 32) / 8);
-					*reg = FCTL_REG_CMDWEPROTB;
-				}
-			} else {
-				*sector_mask = BIT((sector_in_bank / 8) % 32);
+			/* Use CMDWEPROTB */
+			if (phys_sector_num >= 32 && sector_in_bank < 256) {
+				/* Dual bank system */
+				if (mspm0_info->main_flash_num_banks > 1)
+					*sector_mask = BIT(sector_in_bank / 8);
+				else	/* Single bank system */
+					*sector_mask = BIT((sector_in_bank - 32) / 8);
 				*reg = FCTL_REG_CMDWEPROTB;
 			}
-			break;
-		case MSPM0_FLASH_BASE_NONMAIN:
-			*sector_mask = BIT(sector_num % 32);
-			*reg = FCTL_REG_CMDWEPROTNM;
-			break;
-		default:
-			/*
-			 * Not expected to reach here due to check in mspm0_address_check()
-			 * but adding it as another layer of safety.
-			 */
-			ret = ERROR_FLASH_DST_OUT_OF_BANK;
-			break;
+		} else {
+			*sector_mask = BIT((sector_in_bank / 8) % 32);
+			*reg = FCTL_REG_CMDWEPROTB;
+		}
+		break;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		*sector_mask = BIT(sector_num % 32);
+		*reg = FCTL_REG_CMDWEPROTNM;
+		break;
+	default:
+		/*
+		 * Not expected to reach here due to check in mspm0_address_check()
+		 * but adding it as another layer of safety.
+		 */
+		ret = ERROR_FLASH_DST_OUT_OF_BANK;
+		break;
 	}
 
 	if (ret != ERROR_OK) {
@@ -650,22 +650,22 @@ static int mspm0_address_check(struct flash_bank *bank, unsigned int addr)
 	 * the proper bank.
 	 */
 	switch (bank->base) {
-		case MSPM0_FLASH_BASE_MAIN:
-			if (addr <= (MSPM0_FLASH_BASE_MAIN + flash_main_size))
-				ret = ERROR_OK;
-			break;
-		case MSPM0_FLASH_BASE_NONMAIN:
-			if (addr >= MSPM0_FLASH_BASE_NONMAIN && addr <= MSPM0_FLASH_END_NONMAIN)
-				ret = ERROR_OK;
-			break;
-		case MSPM0_FLASH_BASE_DATA:
-			if (addr >= MSPM0_FLASH_BASE_DATA &&
-			addr <= (MSPM0_FLASH_BASE_DATA + flash_data_size))
-				ret = ERROR_OK;
-			break;
-		default:
-			ret = ERROR_FLASH_DST_OUT_OF_BANK;
-			break;
+	case MSPM0_FLASH_BASE_MAIN:
+		if (addr <= (MSPM0_FLASH_BASE_MAIN + flash_main_size))
+			ret = ERROR_OK;
+		break;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		if (addr >= MSPM0_FLASH_BASE_NONMAIN && addr <= MSPM0_FLASH_END_NONMAIN)
+			ret = ERROR_OK;
+		break;
+	case MSPM0_FLASH_BASE_DATA:
+		if (addr >= MSPM0_FLASH_BASE_DATA &&
+		addr <= (MSPM0_FLASH_BASE_DATA + flash_data_size))
+			ret = ERROR_OK;
+		break;
+	default:
+		ret = ERROR_FLASH_DST_OUT_OF_BANK;
+		break;
 	}
 
 	return ret;
@@ -681,18 +681,18 @@ static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int add
 
 	ret = mspm0_address_check(bank, addr);
 	switch (ret) {
-		case ERROR_FLASH_SECTOR_INVALID:
-			LOG_ERROR("%s: Unable to map sector protect reg for address 0x%08" PRIx32,
-			mspm0_info->name, addr);
-			break;
-		case ERROR_FLASH_DST_OUT_OF_BANK:
-			LOG_ERROR("%s: Unable to determine which bank to use 0x%08" PRIx32,
-			mspm0_info->name, addr);
-			break;
-		default:
-			mspm0_fctl_get_sector_reg(bank, addr, &reg, &sector_mask);
-			ret = target_write_u32(target, reg, ~sector_mask);
-			break;
+	case ERROR_FLASH_SECTOR_INVALID:
+		LOG_ERROR("%s: Unable to map sector protect reg for address 0x%08" PRIx32,
+		mspm0_info->name, addr);
+		break;
+	case ERROR_FLASH_DST_OUT_OF_BANK:
+		LOG_ERROR("%s: Unable to determine which bank to use 0x%08" PRIx32,
+		mspm0_info->name, addr);
+		break;
+	default:
+		mspm0_fctl_get_sector_reg(bank, addr, &reg, &sector_mask);
+		ret = target_write_u32(target, reg, ~sector_mask);
+		break;
 	}
 
 	return ret;
@@ -845,25 +845,25 @@ static int mspm0_protect_reg_map(struct flash_bank *bank, unsigned int sector,
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 
 	switch (bank->base) {
-		case MSPM0_FLASH_BASE_NONMAIN:
-			*protect_reg_offset = sector / 32;
-			*protect_reg_bit = sector % 32;
-			break;
-		case MSPM0_FLASH_BASE_MAIN:
-			retval =
-			mspm0_protect_reg_mainmap(bank, sector, protect_reg_offset,
-			protect_reg_bit);
-			if (retval)
-				return retval;
-			break;
-		case MSPM0_FLASH_BASE_DATA:
-			LOG_ERROR("%s: Bank protection not available " TARGET_ADDR_FMT,
-			mspm0_info->name, bank->base);
-			return ERROR_FAIL;
-		default:
-			LOG_ERROR("%s: Invalid bank address " TARGET_ADDR_FMT, mspm0_info->name,
-			bank->base);
-			return ERROR_FAIL;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		*protect_reg_offset = sector / 32;
+		*protect_reg_bit = sector % 32;
+		break;
+	case MSPM0_FLASH_BASE_MAIN:
+		retval =
+		mspm0_protect_reg_mainmap(bank, sector, protect_reg_offset,
+		protect_reg_bit);
+		if (retval)
+			return retval;
+		break;
+	case MSPM0_FLASH_BASE_DATA:
+		LOG_ERROR("%s: Bank protection not available " TARGET_ADDR_FMT,
+		mspm0_info->name, bank->base);
+		return ERROR_FAIL;
+	default:
+		LOG_ERROR("%s: Invalid bank address " TARGET_ADDR_FMT, mspm0_info->name,
+		bank->base);
+		return ERROR_FAIL;
 	}
 
 	/* Basic sanity checks */
@@ -1040,40 +1040,40 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	}
 
 	switch (bank->base) {
-		case MSPM0_FLASH_BASE_MAIN:
-			for (unsigned int csa = first; csa <= last; csa++) {
-				unsigned int addr = csa * mspm0_info->sector_size;
-				retval = mspm0_fctl_sector_erase(bank, addr);
-				if (retval)
-					LOG_ERROR("%s: Sector erase on MAIN failed at address 0x%08"
-					PRIx32 "(sector: %d)",
-					mspm0_info->name,
-					addr,
-					csa);
-			}
-			break;
-		case MSPM0_FLASH_BASE_NONMAIN:
-			retval = mspm0_fctl_sector_erase(bank, MSPM0_FLASH_BASE_NONMAIN);
+	case MSPM0_FLASH_BASE_MAIN:
+		for (unsigned int csa = first; csa <= last; csa++) {
+			unsigned int addr = csa * mspm0_info->sector_size;
+			retval = mspm0_fctl_sector_erase(bank, addr);
 			if (retval)
-				LOG_ERROR("%s: Sector erase on NONMAIN failed", mspm0_info->name);
-			break;
-		case MSPM0_FLASH_BASE_DATA:
-			for (unsigned int csa = first; csa <= last; csa++) {
-				unsigned int addr = (MSPM0_FLASH_BASE_DATA +
-				(csa * mspm0_info->sector_size));
-				retval = mspm0_fctl_sector_erase(bank, addr);
-				if (retval)
-					LOG_ERROR("%s: Sector erase on DATA bank failed at address 0x%08"
-					PRIx32 "(sector: %d)",
-					mspm0_info->name,
-					addr,
-					csa);
-			}
-			break;
-		default:
-			LOG_ERROR("%s: Invalid memory region access", mspm0_info->name);
-			retval = ERROR_FLASH_BANK_INVALID;
-			break;
+				LOG_ERROR("%s: Sector erase on MAIN failed at address 0x%08"
+				PRIx32 "(sector: %d)",
+				mspm0_info->name,
+				addr,
+				csa);
+		}
+		break;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		retval = mspm0_fctl_sector_erase(bank, MSPM0_FLASH_BASE_NONMAIN);
+		if (retval)
+			LOG_ERROR("%s: Sector erase on NONMAIN failed", mspm0_info->name);
+		break;
+	case MSPM0_FLASH_BASE_DATA:
+		for (unsigned int csa = first; csa <= last; csa++) {
+			unsigned int addr = (MSPM0_FLASH_BASE_DATA +
+			(csa * mspm0_info->sector_size));
+			retval = mspm0_fctl_sector_erase(bank, addr);
+			if (retval)
+				LOG_ERROR("%s: Sector erase on DATA bank failed at address 0x%08"
+				PRIx32 "(sector: %d)",
+				mspm0_info->name,
+				addr,
+				csa);
+		}
+		break;
+	default:
+		LOG_ERROR("%s: Invalid memory region access", mspm0_info->name);
+		retval = ERROR_FLASH_BANK_INVALID;
+		break;
 	}
 
 	/*
@@ -1150,18 +1150,18 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 
 	/* Add proper memory offset for bank being written to */
 	switch (bank->base) {
-		case MSPM0_FLASH_BASE_MAIN:
-			addr += MSPM0_FLASH_BASE_MAIN;
-			break;
-		case MSPM0_FLASH_BASE_NONMAIN:
-			addr += MSPM0_FLASH_BASE_NONMAIN;
-			break;
-		case MSPM0_FLASH_BASE_DATA:
-			addr += MSPM0_FLASH_BASE_DATA;
-			break;
-		default:
-			LOG_ERROR("%s: Invalid bank of memory", mspm0_info->name);
-			return ERROR_FLASH_BANK_INVALID;
+	case MSPM0_FLASH_BASE_MAIN:
+		addr += MSPM0_FLASH_BASE_MAIN;
+		break;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		addr += MSPM0_FLASH_BASE_NONMAIN;
+		break;
+	case MSPM0_FLASH_BASE_DATA:
+		addr += MSPM0_FLASH_BASE_DATA;
+		break;
+	default:
+		LOG_ERROR("%s: Invalid bank of memory", mspm0_info->name);
+		return ERROR_FLASH_BANK_INVALID;
 	}
 
 	while (count) {
@@ -1185,17 +1185,17 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		bytes_en = (1 << num_bytes_to_write) - 1;
 		/* ECC chunks to write */
 		switch (mspm0_info->flash_word_size_bytes) {
-			case 8:
-				bytes_en |= BIT(8);
-				break;
-			case 16:
-				bytes_en |= BIT(16);
-				bytes_en |= (num_bytes_to_write > 8) ? BIT(17) : 0;
-				break;
-			default:
-				LOG_ERROR("%s: Invalid flash_word_size_bytes %d",
-				mspm0_info->name, mspm0_info->flash_word_size_bytes);
-				return ERROR_FAIL;
+		case 8:
+			bytes_en |= BIT(8);
+			break;
+		case 16:
+			bytes_en |= BIT(16);
+			bytes_en |= (num_bytes_to_write > 8) ? BIT(17) : 0;
+			break;
+		default:
+			LOG_ERROR("%s: Invalid flash_word_size_bytes %d",
+			mspm0_info->name, mspm0_info->flash_word_size_bytes);
+			return ERROR_FAIL;
 		}
 
 		retval = mspm0_fctl_cfg_command(bank, addr,
@@ -1286,51 +1286,52 @@ static int mspm0_probe(struct flash_bank *bank)
 	}
 
 	switch (bank->base) {
-		case MSPM0_FLASH_BASE_NONMAIN:
-			bank->size = 1024;
-			bank->num_sectors = 0x1;
-			mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTNM;
-			mspm0_info->protect_reg_count = 1;
-			break;
-		case MSPM0_FLASH_BASE_MAIN:
-			bank->size = (mspm0_info->main_flash_size_kb * 1024);
-			bank->num_sectors = bank->size / mspm0_info->sector_size;
-			/*
-			 * If the feature version bit read from the FCTL_REG_DESC is
-			 * greater than or equal to 0xA then it means that the device
-			 * will exclusively use CMDWEPROTB ONLY for MAIN memory protection
-			 */
-			if (mspm0_info->flash_version >= FCTL_FEATURE_VER_B) {
-				mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTB;
-				mspm0_info->protect_reg_count = 1;
-			} else {
-				mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTA;
-				mspm0_info->protect_reg_count = 3;
-			}
-			break;
-		case MSPM0_FLASH_BASE_DATA:
-			if (!mspm0_info->data_flash_size_kb) {
-				LOG_INFO("%s: Data region NOT available!", mspm0_info->name);
-				bank->size = 0x0;
-				bank->num_sectors = 0x0;
-				return ERROR_OK;
-			}
-			/*
-			 * Any MSPM0 device containing data bank will have a flashctl
-			 * feature version of 0xA or higher. Since data bank is treated
-			 * like MAIN memory, it will also exclusively use CMDWEPROTB for
-			 * protection.
-			 */
-			bank->size = (mspm0_info->data_flash_size_kb * 1024);
-			bank->num_sectors = bank->size / mspm0_info->sector_size;
+	case MSPM0_FLASH_BASE_NONMAIN:
+		bank->size = 1024;
+		bank->num_sectors = 0x1;
+		mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTNM;
+		mspm0_info->protect_reg_count = 1;
+		break;
+	case MSPM0_FLASH_BASE_MAIN:
+		bank->size = (mspm0_info->main_flash_size_kb * 1024);
+		bank->num_sectors = bank->size / mspm0_info->sector_size;
+		/*
+		 * If the feature version bit read from the FCTL_REG_DESC is
+		 * greater than or equal to 0xA then it means that the device
+		 * will exclusively use CMDWEPROTB ONLY for MAIN memory protection
+		 */
+		if (mspm0_info->flash_version >= FCTL_FEATURE_VER_B) {
 			mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTB;
 			mspm0_info->protect_reg_count = 1;
-			break;
-		default:
-			LOG_ERROR("%s: Invalid bank address " TARGET_ADDR_FMT, mspm0_info->name,
-			bank->base);
-			return ERROR_FAIL;
+		} else {
+			mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTA;
+			mspm0_info->protect_reg_count = 3;
+		}
+		break;
+	case MSPM0_FLASH_BASE_DATA:
+		if (!mspm0_info->data_flash_size_kb) {
+			LOG_INFO("%s: Data region NOT available!", mspm0_info->name);
+			bank->size = 0x0;
+			bank->num_sectors = 0x0;
+			return ERROR_OK;
+		}
+		/*
+		 * Any MSPM0 device containing data bank will have a flashctl
+		 * feature version of 0xA or higher. Since data bank is treated
+		 * like MAIN memory, it will also exclusively use CMDWEPROTB for
+		 * protection.
+		 */
+		bank->size = (mspm0_info->data_flash_size_kb * 1024);
+		bank->num_sectors = bank->size / mspm0_info->sector_size;
+		mspm0_info->protect_reg_base = FCTL_REG_CMDWEPROTB;
+		mspm0_info->protect_reg_count = 1;
+		break;
+	default:
+		LOG_ERROR("%s: Invalid bank address " TARGET_ADDR_FMT, mspm0_info->name,
+		bank->base);
+		return ERROR_FAIL;
 	}
+
 	bank->sectors = calloc(bank->num_sectors, sizeof(struct flash_sector));
 	if (!bank->sectors) {
 		LOG_ERROR("%s: Out of memory for sectors!", mspm0_info->name);
