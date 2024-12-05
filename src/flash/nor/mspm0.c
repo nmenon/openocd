@@ -1222,7 +1222,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			uint32_t write_value;
 
 			/* Make sure alignments are handled correctly */
-			(void)memcpy(&write_value, buffer, sizeof(unsigned int));
+			(void)memcpy(&write_value, buffer, sizeof(uint32_t));
 
 			retval = target_write_u32(target, data_reg, write_value);
 			if (retval)
