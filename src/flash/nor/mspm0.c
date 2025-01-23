@@ -1213,6 +1213,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			bytes_en);
 		if (retval)
 			return retval;
+
 		retval = mspm0_fctl_unprotect_sector(bank, addr);
 		if (retval)
 			return retval;
