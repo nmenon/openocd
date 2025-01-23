@@ -1219,14 +1219,12 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 
 		while (num_bytes_to_write) {
 			unsigned int sub_count;
-			uint32_t write_value;
 
 			/* Make sure alignments are handled correctly */
-			(void)memcpy(&write_value, buffer, sizeof(uint32_t));
-
-			retval = target_write_u32(target, data_reg, write_value);
+			retval = target_write_memory(target, data_reg, 1, num_bytes_to_write, buffer);
 			if (retval)
 				return retval;
+
 			sub_count =
 				(num_bytes_to_write <
 				sizeof(unsigned int)) ? num_bytes_to_write : 4;
