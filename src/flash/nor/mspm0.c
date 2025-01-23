@@ -1137,7 +1137,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 
 	if (offset % mspm0_info->flash_word_size_bytes) {
 		LOG_ERROR("%s: Offset 0x%0" PRIx32 " Must be aligned to %d bytes",
-			mspm0_info->name, offset, mspm0_info->flash_word_size_bytes);
+			mspm0_info->name, bank->write_start_alignment, bank->write_end_alignment);
 		return ERROR_FLASH_DST_BREAKS_ALIGNMENT;
 	}
 
