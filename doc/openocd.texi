@@ -7271,7 +7271,10 @@ Instruments include internal flash. The mspm0 flash driver
 automatically recognizes the specific version's flash parameters and
 autoconfigures itself. The main program flash starts at address 0x0.
 Non-main flash starts at 0x41c00000. If present on the device, the
-optional region called "Data" starts at 0x41d00000.
+optional region called "Data" starts at 0x41d00000. NOTE: When erasing
+all of MAIN memory, if the MCU is still executing from MAIN memory do not reset
+the device as it could cause a double hard-fault due to the missing interrupt
+vector table at the start of memory.
 
 @example
 flash bank $_FLASHNAME mspm0 0 0 0 0 $_TARGETNAME
