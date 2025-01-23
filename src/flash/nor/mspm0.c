@@ -1162,7 +1162,6 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 
 	while (count) {
 		unsigned int num_bytes_to_write;
-		unsigned int data_reg = FCTL_REG_CMDDATA0;
 		uint32_t bytes_en;
 
 		/*
@@ -1204,23 +1203,13 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		if (retval)
 			return retval;
 
-		while (num_bytes_to_write) {
-			unsigned int sub_count;
+		retval = target_write_memory(target, FCTL_REG_CMDDATA0, 1, num_bytes_to_write, buffer);
+		if (retval)
+			return retval;
 
-			/* Make sure alignments are handled correctly */
-			retval = target_write_memory(target, data_reg, 1, num_bytes_to_write, buffer);
-			if (retval)
-				return retval;
-
-			sub_count =
-				(num_bytes_to_write <
-				sizeof(unsigned int)) ? num_bytes_to_write : 4;
-			buffer += sub_count;
-			data_reg += sub_count;
-			num_bytes_to_write -= sub_count;
-			addr += sub_count;
-			count -= sub_count;
-		}
+		addr += num_bytes_to_write;
+		buffer += num_bytes_to_write;
+		count -= num_bytes_to_write;
 
 		retval = target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
 		if (retval)
