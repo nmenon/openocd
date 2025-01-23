@@ -1187,7 +1187,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		 * programming - there does not seem to be discoverability!
 		 */
 		if (count < mspm0_info->flash_word_size_bytes)
-			num_bytes_to_write = count % mspm0_info->flash_word_size_bytes;
+			num_bytes_to_write = count;
 		else
 			num_bytes_to_write = mspm0_info->flash_word_size_bytes;
 
