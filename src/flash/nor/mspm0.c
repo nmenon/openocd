@@ -1113,7 +1113,6 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 {
 	struct target *target = bank->target;
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	unsigned int addr = offset;
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 	int retval;
 
@@ -1159,20 +1158,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	}
 
 	/* Add proper memory offset for bank being written to */
-	switch (bank->base) {
-	case MSPM0_FLASH_BASE_MAIN:
-		addr += MSPM0_FLASH_BASE_MAIN;
-		break;
-	case MSPM0_FLASH_BASE_NONMAIN:
-		addr += MSPM0_FLASH_BASE_NONMAIN;
-		break;
-	case MSPM0_FLASH_BASE_DATA:
-		addr += MSPM0_FLASH_BASE_DATA;
-		break;
-	default:
-		LOG_ERROR("%s: Invalid bank of memory", mspm0_info->name);
-		return ERROR_FLASH_BANK_INVALID;
-	}
+	unsigned int addr = bank->base + offset;
 
 	while (count) {
 		unsigned int num_bytes_to_write;
