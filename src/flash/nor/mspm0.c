@@ -815,6 +815,17 @@ static int mspm0_protect_check(struct flash_bank *bank)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 
+	/*
+	 * TRM Says:
+	 * Note that the CMDWEPROTx registers are reset to a protected state
+	 * at the end of all program and erase operations.  These registers
+	 * must be re-configured by software before a new operation is
+	 * initiated.
+	 *
+	 * To deal with this protection scheme, the CMDWEPROTx register that
+	 * correlates to the sector is modified at the time of operation.
+	 */
+
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
