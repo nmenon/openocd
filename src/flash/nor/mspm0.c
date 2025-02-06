@@ -958,12 +958,6 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	if (mspm0_info->did == 0)
 		return ERROR_FLASH_BANK_NOT_PROBED;
 
-	if (offset % mspm0_info->flash_word_size_bytes) {
-		LOG_ERROR("%s: Offset 0x%0" PRIx32 " Must be aligned to %d bytes",
-			mspm0_info->name, bank->write_start_alignment, bank->write_end_alignment);
-		return ERROR_FLASH_DST_BREAKS_ALIGNMENT;
-	}
-
 	/*
 	 * Pick a copy of the current protection config for later restoration
 	 * We need to restore these regs after every write, so instead of trying
@@ -1026,7 +1020,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		if (retval)
 			return retval;
 
-		retval = target_write_memory(target, FCTL_REG_CMDDATA0, 1, num_bytes_to_write, buffer);
+		retval = target_write_memory(target, FCTL_REG_CMDDATA0, 4, num_bytes_to_write / 4, buffer);
 		if (retval)
 			return retval;
 
@@ -1091,6 +1085,9 @@ static int mspm0_probe(struct flash_bank *bank)
 		free(bank->sectors);
 		bank->sectors = NULL;
 	}
+
+	bank->write_start_alignment = 4;
+	bank->write_end_alignment = 4;
 
 	switch (bank->base) {
 	case MSPM0_FLASH_BASE_NONMAIN:
