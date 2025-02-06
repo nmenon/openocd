@@ -1020,7 +1020,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		if (retval)
 			return retval;
 
-		retval = target_write_memory(target, FCTL_REG_CMDDATA0, 4, num_bytes_to_write / 4, buffer);
+		retval = target_write_buffer(target, FCTL_REG_CMDDATA0, num_bytes_to_write, buffer);
 		if (retval)
 			return retval;
 
