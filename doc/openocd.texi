@@ -7403,7 +7403,7 @@ msp432 bsl lock
 
 @deffn {Flash Driver} {mspm0}
 
-All Arm Cortex-M0+ MSPM microcontroller versions from Texas Instruments
+All Arm Cortex-M0+ MSPM0 microcontroller versions from Texas Instruments
 include internal flash. The mspm0 flash driver automatically recognizes the
 specific version's flash parameters and autoconfigures itself. The main
 program flash starts at address 0x0. Non-main flash starts at 0x41c00000.
@@ -7416,10 +7416,10 @@ If present on the device, the optional region called "Data" starts at
 @item @b{Reset while MCU operation:} When erasing all of MAIN memory, if the
 MCU is still executing from MAIN memory do not reset the device as it could
 cause a double hard-fault due to the missing interrupt vector table at the
-start of memory.
+start of memory. To recover from such scenario reset or power-cycle the MCU.
 
 @item @b{No explicit protection support:} MSPM0 flash controller auto-protect
-themselves after every flash operation. As a result of this, openOCD does not
+themselves after every flash operation. As a result of this, OpenOCD does not
 explicitly provide any protection function and automatically un-protects
 required sections as flash operations are requested.
 @end itemize
@@ -7451,18 +7451,18 @@ mspm0_board_reset
 
 @end itemize
 
-@deffn {Command} {mspm0 mspm0_board_reset}
+@deffn {Command} {mspm0_board_reset}
 Performs an nRST toggle on the device.
 @end deffn
 
-@deffn {Command} {mspm0 mspm0_mass_erase}
+@deffn {Command} {mspm0_mass_erase}
 Sends the mass erase command to the SEC-AP mailbox and then performs
 an nRST toggle. Once the command has been fully processed by the ROM,
 all MAIN memory will be erased. NOTE: This command is not supported
 on MSPM0C* family of devices.
 @end deffn
 
-@deffn {Command} {mspm0 mspm0_factory_reset}
+@deffn {Command} {mspm0_factory_reset}
 Sends the factory reset command to the SEC-AP mailbox and then performs
 an nRST toggle. Once the command has been fully processed by the ROM,
 all MAIN memory will be erased and NONMAIN will be reset to its default
