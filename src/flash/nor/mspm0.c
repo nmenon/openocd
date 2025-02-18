@@ -636,8 +636,8 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	}
 
 	if (ret != ERROR_OK) {
-		LOG_ERROR("%s: Unable to map sector protect reg for address 0x%08" PRIx32,
-			mspm0_info->name, addr);
+		LOG_ERROR("Unable to map sector protect reg for address 0x%08" PRIx32,
+					addr);
 	}
 
 error:
@@ -681,7 +681,6 @@ static int mspm0_address_check(struct flash_bank *bank, unsigned int addr)
 static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int addr)
 {
 	struct target *target = bank->target;
-	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	unsigned int reg = 0x0;
 	uint32_t sector_mask = 0x0;
 	int ret;
@@ -689,12 +688,12 @@ static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int add
 	ret = mspm0_address_check(bank, addr);
 	switch (ret) {
 	case ERROR_FLASH_SECTOR_INVALID:
-		LOG_ERROR("%s: Unable to map sector protect reg for address 0x%08" PRIx32,
-		mspm0_info->name, addr);
+		LOG_ERROR("Unable to map sector protect reg for address 0x%08" PRIx32,
+					 addr);
 		break;
 	case ERROR_FLASH_DST_OUT_OF_BANK:
-		LOG_ERROR("%s: Unable to determine which bank to use 0x%08" PRIx32,
-		mspm0_info->name, addr);
+		LOG_ERROR("Unable to determine which bank to use 0x%08" PRIx32,
+					 addr);
 		break;
 	default:
 		mspm0_fctl_get_sector_reg(bank, addr, &reg, &sector_mask);
@@ -734,7 +733,6 @@ flash_cfg_error:
 static int mspm0_fctl_wait_cmd_ok(struct flash_bank *bank)
 {
 	struct target *target = bank->target;
-	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	uint32_t return_code = 0;
 	int64_t start_ms;
 	int64_t elapsed_ms;
@@ -759,12 +757,10 @@ static int mspm0_fctl_wait_cmd_ok(struct flash_bank *bank)
 		if (error_string) {
 			strncat(error_string, mspm0_fctl_translate_ret_err(return_code),
 					ERR_STRING_MAX);
-			LOG_ERROR("%s: Flash command failed: %s", mspm0_info->name,
-				error_string);
+			LOG_ERROR("Flash command failed: %s", error_string);
 			free(error_string);
 		} else {
-			LOG_ERROR("%s: Flash command failed: 0x%" PRIx32,
-				mspm0_info->name, return_code);
+			LOG_ERROR("Flash command failed: 0x%" PRIx32, return_code);
 		}
 		return ERROR_FAIL;
 	}
@@ -775,7 +771,6 @@ static int mspm0_fctl_wait_cmd_ok(struct flash_bank *bank)
 static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 {
 	struct target *target = bank->target;
-	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
 	int retval = ERROR_OK;
 
 	/*
@@ -792,8 +787,8 @@ static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 	 */
 	retval = mspm0_fctl_unprotect_sector(bank, addr);
 	if (retval) {
-		LOG_ERROR("%s: Unprotecting sector of memory at address 0x%08" PRIx32
-			" failed", mspm0_info->name, addr);
+		LOG_ERROR("Unprotecting sector of memory at address 0x%08" PRIx32
+			" failed", addr);
 		return retval;
 	}
 
@@ -853,7 +848,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	uint32_t protect_reg_cache[MSPM0_MAX_PROTREGS];
 
 	if (bank->target->state != TARGET_HALTED) {
-		LOG_ERROR("%s: Please halt target for erasing flash", mspm0_info->name);
+		LOG_ERROR("Please halt target for erasing flash");
 		return ERROR_TARGET_NOT_HALTED;
 	}
 
@@ -866,8 +861,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 			mspm0_info->protect_reg_base + (i * 4),
 			&protect_reg_cache[i]);
 		if (retval) {
-			LOG_ERROR("%s: Failed saving flashctl protection status",
-				mspm0_info->name);
+			LOG_ERROR("Failed saving flashctl protection status");
 			return retval;
 		}
 	}
@@ -878,9 +872,8 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 			unsigned int addr = csa * mspm0_info->sector_size;
 			retval = mspm0_fctl_sector_erase(bank, addr);
 			if (retval)
-				LOG_ERROR("%s: Sector erase on MAIN failed at address 0x%08"
+				LOG_ERROR("Sector erase on MAIN failed at address 0x%08"
 				PRIx32 "(sector: %d)",
-				mspm0_info->name,
 				addr,
 				csa);
 		}
@@ -888,7 +881,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	case MSPM0_FLASH_BASE_NONMAIN:
 		retval = mspm0_fctl_sector_erase(bank, MSPM0_FLASH_BASE_NONMAIN);
 		if (retval)
-			LOG_ERROR("%s: Sector erase on NONMAIN failed", mspm0_info->name);
+			LOG_ERROR("Sector erase on NONMAIN failed");
 		break;
 	case MSPM0_FLASH_BASE_DATA:
 		for (unsigned int csa = first; csa <= last; csa++) {
@@ -896,15 +889,14 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 			(csa * mspm0_info->sector_size));
 			retval = mspm0_fctl_sector_erase(bank, addr);
 			if (retval)
-				LOG_ERROR("%s: Sector erase on DATA bank failed at address 0x%08"
+				LOG_ERROR("Sector erase on DATA bank failed at address 0x%08"
 				PRIx32 "(sector: %d)",
-				mspm0_info->name,
 				addr,
 				csa);
 		}
 		break;
 	default:
-		LOG_ERROR("%s: Invalid memory region access", mspm0_info->name);
+		LOG_ERROR("Invalid memory region access");
 		retval = ERROR_FLASH_BANK_INVALID;
 		break;
 	}
@@ -922,8 +914,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 		retval = target_write_u32(target, mspm0_info->protect_reg_base + (i * 4),
 			protect_reg_cache[i]);
 		if (retval) {
-			LOG_ERROR("%s: Failed re-applying protection status of flashctl",
-				mspm0_info->name);
+			LOG_ERROR("Failed re-applying protection status of flashctl");
 			break;
 		}
 	}
@@ -950,8 +941,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 	 */
 
 	if (bank->target->state != TARGET_HALTED) {
-		LOG_ERROR("%s: Please halt target for programming flash",
-			mspm0_info->name);
+		LOG_ERROR("Please halt target for programming flash");
 		return ERROR_TARGET_NOT_HALTED;
 	}
 
@@ -968,8 +958,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			mspm0_info->protect_reg_base + (i * 4),
 			&protect_reg_cache[i]);
 		if (retval) {
-			LOG_ERROR("%s: Failed saving flashctl protection status",
-				mspm0_info->name);
+			LOG_ERROR("Failed saving flashctl protection status");
 			return retval;
 		}
 	}
@@ -1005,8 +994,8 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			bytes_en |= (num_bytes_to_write > 8) ? BIT(17) : 0;
 			break;
 		default:
-			LOG_ERROR("%s: Invalid flash_word_size_bytes %d",
-			mspm0_info->name, mspm0_info->flash_word_size_bytes);
+			LOG_ERROR("Invalid flash_word_size_bytes %d",
+						mspm0_info->flash_word_size_bytes);
 			return ERROR_FAIL;
 		}
 
@@ -1051,8 +1040,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			mspm0_info->protect_reg_base + (i * 4),
 			protect_reg_cache[i]);
 		if (retval) {
-			LOG_ERROR("%s: Failed re-applying protection status of flashctl",
-				mspm0_info->name);
+			LOG_ERROR("Failed re-applying protection status of flashctl");
 			break;
 		}
 	}
@@ -1114,7 +1102,7 @@ static int mspm0_probe(struct flash_bank *bank)
 		break;
 	case MSPM0_FLASH_BASE_DATA:
 		if (!mspm0_info->data_flash_size_kb) {
-			LOG_INFO("%s: Data region NOT available!", mspm0_info->name);
+			LOG_INFO("Data region NOT available!");
 			bank->size = 0x0;
 			bank->num_sectors = 0x0;
 			return ERROR_OK;
@@ -1131,14 +1119,14 @@ static int mspm0_probe(struct flash_bank *bank)
 		mspm0_info->protect_reg_count = 1;
 		break;
 	default:
-		LOG_ERROR("%s: Invalid bank address " TARGET_ADDR_FMT, mspm0_info->name,
-		bank->base);
+		LOG_ERROR("Invalid bank address " TARGET_ADDR_FMT,
+					bank->base);
 		return ERROR_FAIL;
 	}
 
 	bank->sectors = calloc(bank->num_sectors, sizeof(struct flash_sector));
 	if (!bank->sectors) {
-		LOG_ERROR("%s: Out of memory for sectors!", mspm0_info->name);
+		LOG_ERROR("Out of memory for sectors!");
 		return ERROR_FAIL;
 	}
 	for (unsigned int i = 0; i < bank->num_sectors; i++) {
