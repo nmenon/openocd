@@ -737,11 +737,9 @@ static int mspm0_fctl_wait_cmd_ok(struct flash_bank *bank)
 	int64_t start_ms;
 	int64_t elapsed_ms;
 
-	int retval = ERROR_OK;
-
 	start_ms = timeval_ms();
 	while ((return_code & FCTL_STATCMD_CMDDONE_MASK) != FCTL_STATCMD_CMDDONE_STATDONE) {
-		retval = target_read_u32(target, FCTL_REG_STATCMD, &return_code);
+		int retval = target_read_u32(target, FCTL_REG_STATCMD, &return_code);
 		if (retval != ERROR_OK)
 			return retval;
 
@@ -771,7 +769,6 @@ static int mspm0_fctl_wait_cmd_ok(struct flash_bank *bank)
 static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 {
 	struct target *target = bank->target;
-	int retval = ERROR_OK;
 
 	/*
 	 * TRM Says:
@@ -785,7 +782,7 @@ static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 	 * erase operation. Unfortunately, this means that we cannot do a unitary
 	 * unprotect operation independent of flash erase operation
 	 */
-	retval = mspm0_fctl_unprotect_sector(bank, addr);
+	int retval = mspm0_fctl_unprotect_sector(bank, addr);
 	if (retval) {
 		LOG_ERROR("Unprotecting sector of memory at address 0x%08" PRIx32
 			" failed", addr);
@@ -1051,7 +1048,6 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 static int mspm0_probe(struct flash_bank *bank)
 {
 	struct mspm0_flash_bank *mspm0_info = bank->driver_priv;
-	int retval;
 
 	/*
 	 * If this is a mspm0 chip, it has flash; probe() is just
@@ -1065,7 +1061,7 @@ static int mspm0_probe(struct flash_bank *bank)
 	 * reporting.  Note that it doesn't write, so we don't care about
 	 * whether the target is halted or not.
 	 */
-	retval = mspm0_read_part_info(bank);
+	int retval = mspm0_read_part_info(bank);
 	if (retval != ERROR_OK)
 		return retval;
 
