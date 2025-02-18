@@ -549,7 +549,7 @@ static const char *mspm0_fctl_translate_ret_err(unsigned int return_code)
 	}
 
 	/* If unknown error notify the user*/
-	return ("FAILUNKNOWN");
+	return "FAILUNKNOWN";
 }
 
 static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
