@@ -751,15 +751,7 @@ static int mspm0_fctl_wait_cmd_ok(struct flash_bank *bank)
 	}
 
 	if ((return_code & FCTL_STATCMD_CMDPASS_MASK) != FCTL_STATCMD_CMDPASS_STATPASS) {
-		char *error_string = calloc(ERR_STRING_MAX + 1, sizeof(char));
-		if (error_string) {
-			strncat(error_string, mspm0_fctl_translate_ret_err(return_code),
-					ERR_STRING_MAX);
-			LOG_ERROR("Flash command failed: %s", error_string);
-			free(error_string);
-		} else {
-			LOG_ERROR("Flash command failed: 0x%" PRIx32, return_code);
-		}
+		LOG_ERROR("Flash command failed: %s", mspm0_fctl_translate_ret_err(return_code));
 		return ERROR_FAIL;
 	}
 
