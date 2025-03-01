@@ -519,7 +519,7 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	 */
 	mspm0_info->flash_word_size_bytes = 8;
 
-	LOG_DEBUG("Detected: main flash: %dKb in %d banks, sram: %dKb, data flash: %dKb",
+	LOG_DEBUG("Detected: main flash: %uKb in %u banks, sram: %uKb, data flash: %uKb",
 		mspm0_info->main_flash_size_kb, mspm0_info->main_flash_num_banks,
 		mspm0_info->sram_size_kb, mspm0_info->data_flash_size_kb);
 
