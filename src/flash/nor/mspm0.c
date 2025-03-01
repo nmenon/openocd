@@ -816,9 +816,6 @@ static int mspm0_protect_check(struct flash_bank *bank)
 	for (unsigned int i = 0; i < bank->num_sectors; i++)
 		bank->sectors[i].is_protected = 0;
 
-	if (!mspm0_info->protect_reg_count)
-		return ERROR_OK;
-
 	return ERROR_OK;
 }
 
