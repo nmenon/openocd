@@ -783,9 +783,8 @@ static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 	retval = target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
 	if (retval)
 		return retval;
-	retval = mspm0_fctl_wait_cmd_ok(bank);
 
-	return retval;
+	return mspm0_fctl_wait_cmd_ok(bank);
 }
 
 static int mspm0_protect_check(struct flash_bank *bank)
