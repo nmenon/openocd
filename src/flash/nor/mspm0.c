@@ -686,12 +686,10 @@ static int mspm0_fctl_unprotect_sector(struct flash_bank *bank, unsigned int add
 	ret = mspm0_address_check(bank, addr);
 	switch (ret) {
 	case ERROR_FLASH_SECTOR_INVALID:
-		LOG_ERROR("Unable to map sector protect reg for address 0x%08" PRIx32,
-			addr);
+		LOG_ERROR("Unable to map sector protect reg for address 0x%x", addr);
 		break;
 	case ERROR_FLASH_DST_OUT_OF_BANK:
-		LOG_ERROR("Unable to determine which bank to use 0x%08" PRIx32,
-			addr);
+		LOG_ERROR("Unable to determine which bank to use 0x%x", addr);
 		break;
 	default:
 		mspm0_fctl_get_sector_reg(bank, addr, &reg, &sector_mask);
