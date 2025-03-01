@@ -714,16 +714,14 @@ static int mspm0_fctl_cfg_command(struct flash_bank *bank,
 	 */
 	int retval = target_write_u32(target, FCTL_REG_CMDTYPE, cmd);
 	if (retval)
-		goto flash_cfg_error;
+		return retval;
 	if (byte_en != 0) {
 		retval = target_write_u32(target, FCTL_REG_CMDBYTEN, byte_en);
 		if (retval)
-			goto flash_cfg_error;
+			return retval;
 	}
-	retval = target_write_u32(target, FCTL_REG_CMDADDR, addr);
 
-flash_cfg_error:
-	return retval;
+	return target_write_u32(target, FCTL_REG_CMDADDR, addr);
 }
 
 static int mspm0_fctl_wait_cmd_ok(struct flash_bank *bank)
