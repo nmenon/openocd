@@ -636,8 +636,7 @@ static int mspm0_fctl_get_sector_reg(struct flash_bank *bank, unsigned int addr,
 	}
 
 	if (ret != ERROR_OK) {
-		LOG_ERROR("Unable to map sector protect reg for address 0x%08" PRIx32,
-			addr);
+		LOG_ERROR("Unable to map sector protect reg for address 0x%x", addr);
 	}
 
 	return ret;
