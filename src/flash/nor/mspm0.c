@@ -355,7 +355,7 @@ static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cm
 
 	command_print_sameline(cmd,
 		"\nTI MSPM0 information: Chip is "
-		"%s rev %d Device Unique ID: %d\n",
+		"%s rev %d Device Unique ID: 0x%" PRIu32 "\n",
 		mspm0_info->name, mspm0_info->version,
 		mspm0_info->traceid);
 	command_print_sameline(cmd,
