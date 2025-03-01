@@ -359,7 +359,7 @@ static int get_mspm0_info(struct flash_bank *bank, struct command_invocation *cm
 		mspm0_info->name, mspm0_info->version,
 		mspm0_info->traceid);
 	command_print_sameline(cmd,
-		"main flash: %dKiB in %d bank(s), sram: %dKiB, data flash: %dKiB",
+		"main flash: %uKiB in %u bank(s), sram: %uKiB, data flash: %uKiB",
 		mspm0_info->main_flash_size_kb,
 		mspm0_info->main_flash_num_banks, mspm0_info->sram_size_kb,
 		mspm0_info->data_flash_size_kb);
