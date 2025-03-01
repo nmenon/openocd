@@ -484,15 +484,15 @@ static int mspm0_read_part_info(struct flash_bank *bank)
 	switch (probe_status) {
 	case MSPM0_NO_ID_FOUND:
 		mspm0_info->name = "mspm0x";
-		LOG_INFO("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
-			"], unknown DeviceID[0x%" PRIx32
+		LOG_INFO("Unidentified PART[0x%x]/variant[0x%x"
+			"], unknown DeviceID[0x%x"
 			"]. Attempting to proceed as %s.", part, variant, pnum,
 			mspm0_info->name);
 		break;
 	case MSPM0_DEV_ID_FOUND:
 		mspm0_info->name = mspm0_finf[minfo_idx].family_name;
-		LOG_INFO("Unidentified PART[0x%" PRIx32 "]/variant[0x%" PRIx32
-			"], known DeviceID[0x%" PRIx32
+		LOG_INFO("Unidentified PART[0x%x]/variant[0x%x"
+			"], known DeviceID[0x%x"
 			"]. Attempting to proceed as %s.", part, variant, pnum,
 			mspm0_info->name);
 		break;
