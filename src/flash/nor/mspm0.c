@@ -851,8 +851,8 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 			unsigned int addr = csa * mspm0_info->sector_size;
 			retval = mspm0_fctl_sector_erase(bank, addr);
 			if (retval)
-				LOG_ERROR("Sector erase on MAIN failed at address 0x%08"
-					PRIx32 "(sector: %d)", addr, csa);
+				LOG_ERROR("Sector erase on MAIN failed at address 0x%x "
+						"(sector: %u)", addr, csa);
 		}
 		break;
 	case MSPM0_FLASH_BASE_NONMAIN:
@@ -866,8 +866,8 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 			(csa * mspm0_info->sector_size));
 			retval = mspm0_fctl_sector_erase(bank, addr);
 			if (retval)
-				LOG_ERROR("Sector erase on DATA bank failed at address 0x%08"
-					PRIx32 "(sector: %d)", addr, csa);
+				LOG_ERROR("Sector erase on DATA bank failed at address 0x%x "
+						"(sector: %u)", addr, csa);
 		}
 		break;
 	default:
