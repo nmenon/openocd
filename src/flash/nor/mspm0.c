@@ -877,6 +877,13 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	}
 
 	/*
+	 * If there were any issues from the switch-case statement
+	 * lets return it
+	 */
+	if (retval)
+		return retval;
+
+	/*
 	 * TRM Says:
 	 * Note that the CMDWEPROTx registers are reset to a protected state
 	 * at the end of all program and erase operations.  These registers
