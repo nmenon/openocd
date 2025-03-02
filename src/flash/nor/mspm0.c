@@ -1027,7 +1027,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		}
 	}
 
-	return retval;
+	return ERROR_OK;
 }
 
 static int mspm0_probe(struct flash_bank *bank)
