@@ -897,7 +897,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 			protect_reg_cache[i]);
 		if (retval) {
 			LOG_ERROR("Failed re-applying protection status of flashctl");
-			break;
+			return retval;
 		}
 	}
 
@@ -1023,7 +1023,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 			protect_reg_cache[i]);
 		if (retval) {
 			LOG_ERROR("Failed re-applying protection status of flashctl");
-			break;
+			return retval;
 		}
 	}
 
