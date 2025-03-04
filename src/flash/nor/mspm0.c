@@ -712,11 +712,11 @@ static int mspm0_fctl_cfg_command(struct flash_bank *bank,
 	 * will execute.
 	 */
 	int retval = target_write_u32(target, FCTL_REG_CMDTYPE, cmd);
-	if (retval)
+	if (retval != ERROR_OK)
 		return retval;
 	if (byte_en != 0) {
 		retval = target_write_u32(target, FCTL_REG_CMDBYTEN, byte_en);
-		if (retval)
+		if (retval != ERROR_OK)
 			return retval;
 	}
 
@@ -768,7 +768,7 @@ static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 	 * unprotect operation independent of flash erase operation
 	 */
 	int retval = mspm0_fctl_unprotect_sector(bank, addr);
-	if (retval) {
+	if (retval != ERROR_OK) {
 		LOG_ERROR("Unprotecting sector of memory at address 0x%08" PRIx32
 			" failed", addr);
 		return retval;
@@ -777,10 +777,10 @@ static int mspm0_fctl_sector_erase(struct flash_bank *bank, uint32_t addr)
 	/* Actual erase operation */
 	retval = mspm0_fctl_cfg_command(bank, addr,
 		(FCTL_CMDTYPE_COMMAND_ERASE | FCTL_CMDTYPE_SIZE_SECTOR), 0);
-	if (retval)
+	if (retval != ERROR_OK)
 		return retval;
 	retval = target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
-	if (retval)
+	if (retval != ERROR_OK)
 		return retval;
 
 	return mspm0_fctl_wait_cmd_ok(bank);
@@ -838,7 +838,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 		retval = target_read_u32(target,
 			mspm0_info->protect_reg_base + (i * 4),
 			&protect_reg_cache[i]);
-		if (retval) {
+		if (retval != ERROR_OK) {
 			LOG_ERROR("Failed saving flashctl protection status");
 			return retval;
 		}
@@ -849,14 +849,14 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 		for (unsigned int csa = first; csa <= last; csa++) {
 			unsigned int addr = csa * mspm0_info->sector_size;
 			retval = mspm0_fctl_sector_erase(bank, addr);
-			if (retval)
+			if (retval != ERROR_OK)
 				LOG_ERROR("Sector erase on MAIN failed at address 0x%08x "
 						"(sector: %u)", addr, csa);
 		}
 		break;
 	case MSPM0_FLASH_BASE_NONMAIN:
 		retval = mspm0_fctl_sector_erase(bank, MSPM0_FLASH_BASE_NONMAIN);
-		if (retval)
+		if (retval != ERROR_OK)
 			LOG_ERROR("Sector erase on NONMAIN failed");
 		break;
 	case MSPM0_FLASH_BASE_DATA:
@@ -864,7 +864,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 			unsigned int addr = (MSPM0_FLASH_BASE_DATA +
 			(csa * mspm0_info->sector_size));
 			retval = mspm0_fctl_sector_erase(bank, addr);
-			if (retval)
+			if (retval != ERROR_OK)
 				LOG_ERROR("Sector erase on DATA bank failed at address 0x%08x "
 						"(sector: %u)", addr, csa);
 		}
@@ -876,7 +876,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	}
 
 	/* If there were any issues in our checks, return the error */
-	if (retval)
+	if (retval != ERROR_OK)
 		return retval;
 
 	/*
@@ -891,7 +891,7 @@ static int mspm0_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	for (unsigned int i = 0; i < mspm0_info->protect_reg_count; i++) {
 		retval = target_write_u32(target, mspm0_info->protect_reg_base + (i * 4),
 			protect_reg_cache[i]);
-		if (retval) {
+		if (retval != ERROR_OK) {
 			LOG_ERROR("Failed re-applying protection status of flashctl");
 			return retval;
 		}
@@ -935,7 +935,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		retval = target_read_u32(target,
 			mspm0_info->protect_reg_base + (i * 4),
 			&protect_reg_cache[i]);
-		if (retval) {
+		if (retval != ERROR_OK) {
 			LOG_ERROR("Failed saving flashctl protection status");
 			return retval;
 		}
@@ -980,15 +980,15 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		retval = mspm0_fctl_cfg_command(bank, addr,
 			(FCTL_CMDTYPE_COMMAND_PROGRAM | FCTL_CMDTYPE_SIZE_ONEWORD),
 			bytes_en);
-		if (retval)
+		if (retval != ERROR_OK)
 			return retval;
 
 		retval = mspm0_fctl_unprotect_sector(bank, addr);
-		if (retval)
+		if (retval != ERROR_OK)
 			return retval;
 
 		retval = target_write_buffer(target, FCTL_REG_CMDDATA0, num_bytes_to_write, buffer);
-		if (retval)
+		if (retval != ERROR_OK)
 			return retval;
 
 		addr += num_bytes_to_write;
@@ -996,11 +996,11 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		count -= num_bytes_to_write;
 
 		retval = target_write_u32(target, FCTL_REG_CMDEXEC, FCTL_CMDEXEC_VAL_EXECUTE);
-		if (retval)
+		if (retval != ERROR_OK)
 			return retval;
 
 		retval = mspm0_fctl_wait_cmd_ok(bank);
-		if (retval)
+		if (retval != ERROR_OK)
 			return retval;
 	}
 
@@ -1017,7 +1017,7 @@ static int mspm0_write(struct flash_bank *bank, const unsigned char *buffer,
 		retval = target_write_u32(target,
 			mspm0_info->protect_reg_base + (i * 4),
 			protect_reg_cache[i]);
-		if (retval) {
+		if (retval != ERROR_OK) {
 			LOG_ERROR("Failed re-applying protection status of flashctl");
 			return retval;
 		}
