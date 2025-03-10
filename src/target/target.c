@@ -4447,15 +4447,17 @@ COMMAND_HANDLER(handle_target_read_memory)
 		return ERROR_COMMAND_ARGUMENT_INVALID;
 	}
 
-	const unsigned int width = width_bits / 8;
-
-	if ((addr + (count * width)) < addr) {
-		command_print(CMD, "read_memory: addr + count wraps to zero");
+	if (count > 65536) {
+		command_print(CMD, "read_memory: too large read request, exceeds 64K elements");
 		return ERROR_COMMAND_ARGUMENT_INVALID;
 	}
 
-	if (count > 65536) {
-		command_print(CMD, "read_memory: too large read request, exceeds 64K elements");
+	const unsigned int width = width_bits / 8;
+	/* -1 is needed to handle cases when (addr + count * width) results in zero
+	 * due to overflow.
+	 */
+	if ((addr + count * width - 1) < addr) {
+		command_print(CMD, "read_memory: memory region wraps over address zero");
 		return ERROR_COMMAND_ARGUMENT_INVALID;
 	}
 
@@ -4584,15 +4586,19 @@ static int target_jim_write_memory(Jim_Interp *interp, int argc,
 		return JIM_ERR;
 	}
 
-	const unsigned int width = width_bits / 8;
-
-	if ((addr + (count * width)) < addr) {
-		Jim_SetResultString(interp, "write_memory: addr + len wraps to zero", -1);
+	if (count > 65536) {
+		Jim_SetResultString(interp,
+			"write_memory: too large memory write request, exceeds 64K elements", -1);
 		return JIM_ERR;
 	}
 
-	if (count > 65536) {
-		Jim_SetResultString(interp, "write_memory: too large memory write request, exceeds 64K elements", -1);
+	const unsigned int width = width_bits / 8;
+	/* -1 is needed to handle cases when (addr + count * width) results in zero
+	 * due to overflow.
+	 */
+	if ((addr + count * width - 1) < addr) {
+		Jim_SetResultFormatted(interp,
+			"write_memory: memory region wraps over address zero");
 		return JIM_ERR;
 	}
 
@@ -5823,6 +5829,16 @@ static int target_create(struct jim_getopt_info *goi)
 	target->gdb_port_override = NULL;
 	target->gdb_max_connections = 1;
 
+	cp = Jim_GetString(new_cmd, NULL);
+	target->cmd_name = strdup(cp);
+	if (!target->cmd_name) {
+		LOG_ERROR("Out of memory");
+		free(target->trace_info);
+		free(target->type);
+		free(target);
+		return JIM_ERR;
+	}
+
 	/* Do the rest as "configure" options */
 	goi->is_configure = true;
 	e = target_configure(goi, target);
@@ -5857,19 +5873,6 @@ static int target_create(struct jim_getopt_info *goi)
 	if (target->endianness == TARGET_ENDIAN_UNKNOWN) {
 		/* default endian to little if not specified */
 		target->endianness = TARGET_LITTLE_ENDIAN;
-	}
-
-	cp = Jim_GetString(new_cmd, NULL);
-	target->cmd_name = strdup(cp);
-	if (!target->cmd_name) {
-		LOG_ERROR("Out of memory");
-		rtos_destroy(target);
-		free(target->gdb_port_override);
-		free(target->trace_info);
-		free(target->type);
-		free(target->private_config);
-		free(target);
-		return JIM_ERR;
 	}
 
 	if (target->type->target_create) {
