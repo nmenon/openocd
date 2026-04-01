@@ -9,6 +9,7 @@ struct riscv_program;
 #include "opcodes.h"
 #include "gdb_regs.h"
 #include "jtag/jtag.h"
+#include "target/arm_adi_v5.h"
 #include "target/semihosting_common.h"
 #include "target/target.h"
 #include "target/register.h"
@@ -169,6 +170,15 @@ struct riscv_info {
 	unsigned int common_magic;
 
 	unsigned int dtm_version;
+
+	/* True when target uses an ARM DAP (APB/MEM-AP) instead of JTAG DTM. */
+	bool alternative_dmi;
+
+	/*
+	 * Returns the MEM-AP handle used for DM access in APB mode.
+	 * NULL if not in APB mode or not yet assigned.
+	 */
+	struct adiv5_ap *(*get_dmi_ap)(struct target *target);
 
 	struct command_context *cmd_ctx;
 	void *version_specific;
@@ -377,6 +387,8 @@ enum riscv_priv_mode {
 };
 
 struct riscv_private_config {
+	/* MUST be first member; pointer is cast-compatible with adiv5_private_config * */
+	struct adiv5_private_config adiv5_config;
 	bool dcsr_ebreak_fields[N_RISCV_MODE];
 };
 

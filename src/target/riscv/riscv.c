@@ -483,6 +483,9 @@ static struct riscv_private_config *alloc_default_riscv_private_config(void)
 		return NULL;
 	}
 
+	config->adiv5_config.ap_num = DP_APSEL_INVALID;
+	config->adiv5_config.dap = NULL;
+
 	for (unsigned int i = 0; i < ARRAY_SIZE(config->dcsr_ebreak_fields); ++i)
 		config->dcsr_ebreak_fields[i] = true;
 
@@ -634,8 +637,14 @@ static int riscv_jim_configure(struct target *target,
 	if (!goi->argc)
 		return JIM_OK;
 
+	/* Let adiv5 parse -dap and -ap-num before our own options. */
+	int e = adiv5_jim_configure_ext(target, goi, &config->adiv5_config,
+			ADI_CONFIGURE_DAP_OPTIONAL);
+	if (e != JIM_CONTINUE)
+		return e;
+
 	struct jim_nvp *n;
-	int e = jim_nvp_name2value_obj(goi->interp, nvp_config_opts,
+	e = jim_nvp_name2value_obj(goi->interp, nvp_config_opts,
 				goi->argv[0], &n);
 	if (e != JIM_OK)
 		return JIM_CONTINUE;
@@ -668,23 +677,30 @@ static int riscv_init_target(struct command_context *cmd_ctx,
 	info->cmd_ctx = cmd_ctx;
 	info->reset_delays_wait = -1;
 
-	select_dtmcontrol.num_bits = target->tap->ir_length;
-	select_dbus.num_bits = target->tap->ir_length;
-	select_idcode.num_bits = target->tap->ir_length;
+	/* Determine if we are using APB/MEM-AP (alternative DMI) or JTAG. */
+	struct riscv_private_config *config = riscv_private_config(target);
+	if (config && adiv5_verify_config(&config->adiv5_config) == ERROR_OK)
+		info->alternative_dmi = true;
 
-	if (bscan_tunnel_ir_width != 0) {
-		uint32_t ir_user4_raw = bscan_tunnel_ir_id;
-		/* Provide a default value which target some Xilinx FPGA USER4 IR */
-		if (ir_user4_raw == 0) {
-			assert(target->tap->ir_length >= 6);
-			ir_user4_raw = 0x23 << (target->tap->ir_length - 6);
+	if (!info->alternative_dmi) {
+		select_dtmcontrol.num_bits = target->tap->ir_length;
+		select_dbus.num_bits = target->tap->ir_length;
+		select_idcode.num_bits = target->tap->ir_length;
+
+		if (bscan_tunnel_ir_width != 0) {
+			uint32_t ir_user4_raw = bscan_tunnel_ir_id;
+			/* Provide a default value which target some Xilinx FPGA USER4 IR */
+			if (ir_user4_raw == 0) {
+				assert(target->tap->ir_length >= 6);
+				ir_user4_raw = 0x23 << (target->tap->ir_length - 6);
+			}
+			h_u32_to_le(ir_user4, ir_user4_raw);
+			select_user4.num_bits = target->tap->ir_length;
+			if (bscan_tunnel_type == BSCAN_TUNNEL_DATA_REGISTER)
+				bscan_tunnel_data_register_select_dmi[1].num_bits = bscan_tunnel_ir_width;
+			else /* BSCAN_TUNNEL_NESTED_TAP */
+				bscan_tunnel_nested_tap_select_dmi[2].num_bits = bscan_tunnel_ir_width;
 		}
-		h_u32_to_le(ir_user4, ir_user4_raw);
-		select_user4.num_bits = target->tap->ir_length;
-		if (bscan_tunnel_type == BSCAN_TUNNEL_DATA_REGISTER)
-			bscan_tunnel_data_register_select_dmi[1].num_bits = bscan_tunnel_ir_width;
-		else /* BSCAN_TUNNEL_NESTED_TAP */
-			bscan_tunnel_nested_tap_select_dmi[2].num_bits = bscan_tunnel_ir_width;
 	}
 
 	riscv_semihosting_init(target);
@@ -720,15 +736,24 @@ static void riscv_deinit_target(struct target *target)
 	free(target->private_config);
 
 	struct riscv_info *info = target->arch_info;
-	struct target_type *tt = get_target_type(target);
-	if (!tt)
-		LOG_TARGET_ERROR(target, "Could not identify target type.");
 
-	if (riscv_reg_flush_all(target) != ERROR_OK)
-		LOG_TARGET_ERROR(target, "Failed to flush registers. Ignoring this error.");
+	/*
+	 * Only run version-specific teardown for targets that were examined.
+	 * Deferred-examine targets may never have had dtm_version set,
+	 * so get_target_type() would legitimately return NULL.
+	 */
+	struct target_type *tt = NULL;
+	if (target_was_examined(target)) {
+		tt = get_target_type(target);
+		if (!tt)
+			LOG_TARGET_ERROR(target, "Could not identify target type.");
 
-	if (tt && info && info->version_specific)
-		tt->deinit_target(target);
+		if (riscv_reg_flush_all(target) != ERROR_OK)
+			LOG_TARGET_ERROR(target, "Failed to flush registers. Ignoring this error.");
+
+		if (tt && info && info->version_specific)
+			tt->deinit_target(target);
+	}
 
 	riscv_reg_free_all(target);
 	free_wp_triggers_cache(target);
@@ -2477,17 +2502,23 @@ static int riscv_examine(struct target *target)
 		return ERROR_OK;
 	}
 
-	/* Don't need to select dbus, since the first thing we do is read dtmcontrol. */
-
 	RISCV_INFO(info);
-	uint32_t dtmcontrol;
-	if (dtmcs_scan(target->tap, 0, &dtmcontrol) != ERROR_OK || dtmcontrol == 0) {
-		LOG_TARGET_ERROR(target, "Could not read dtmcontrol. Check JTAG connectivity/board power.");
-		return ERROR_FAIL;
+
+	if (!target->has_dap) {
+		/* JTAG path: read DTMCS to determine DTM version. */
+		uint32_t dtmcontrol;
+		if (dtmcs_scan(target->tap, 0, &dtmcontrol) != ERROR_OK || dtmcontrol == 0) {
+			LOG_TARGET_ERROR(target, "Could not read dtmcontrol. Check JTAG connectivity/board power.");
+			return ERROR_FAIL;
+		}
+		LOG_TARGET_DEBUG(target, "dtmcontrol=0x%x", dtmcontrol);
+		info->dtm_version = get_field(dtmcontrol, DTMCONTROL_VERSION);
+		LOG_TARGET_DEBUG(target, "version=0x%x", info->dtm_version);
+	} else {
+		/* APB/MEM-AP path: no JTAG DTM; set dtm_version to select
+		 * the riscv013 handler (supports DM spec 0.13 and 1.0). */
+		info->dtm_version = DTM_DTMCS_VERSION_1_0;
 	}
-	LOG_TARGET_DEBUG(target, "dtmcontrol=0x%x", dtmcontrol);
-	info->dtm_version = get_field(dtmcontrol, DTMCONTROL_VERSION);
-	LOG_TARGET_DEBUG(target, "version=0x%x", info->dtm_version);
 
 	int examine_status = ERROR_FAIL;
 	struct target_type *tt = get_target_type(target);
