@@ -9,6 +9,7 @@
 #include "debug_reg_printer.h"
 #include "riscv.h"
 #include "field_helpers.h"
+#include "target/arm_adi_v5.h"
 
 // TODO: DTM_DMI_MAX_ADDRESS_LENGTH should be reduced to 32 (per the debug spec)
 #define DTM_DMI_MAX_ADDRESS_LENGTH	((1<<DTM_DTMCS_ABITS_LENGTH)-1)
@@ -49,6 +50,33 @@ struct riscv_batch *riscv_batch_alloc(struct target *target, size_t scans)
 	out->delay_classes = NULL;
 	out->bscan_ctxt = NULL;
 	out->read_keys = NULL;
+	out->queued_retval = ERROR_OK;
+
+	RISCV_INFO(r);
+	out->emulated = r->alternative_dmi;
+	if (out->emulated && r->get_dmi_ap) {
+		out->ap = r->get_dmi_ap(target);
+		/* Physical address = target->dbgbase + register_offset * 4 */
+		out->ap_base = target->dbgbase;
+	}
+
+	/*
+	 * In emulated (APB) mode we still need data_in for read results
+	 * and read_keys for key tracking, but skip JTAG-specific buffers.
+	 */
+	out->data_in = malloc(sizeof(*out->data_in) * scans * DMI_SCAN_BUF_SIZE);
+	if (!out->data_in) {
+		LOG_ERROR("Failed to allocate data_in in RISC-V batch.");
+		goto alloc_error;
+	}
+	out->read_keys = malloc(sizeof(*out->read_keys) * scans);
+	if (!out->read_keys) {
+		LOG_ERROR("Failed to allocate read_keys in RISC-V batch.");
+		goto alloc_error;
+	}
+
+	if (out->emulated)
+		return out;
 
 	/* FIXME: There is potential for memory usage reduction. We could allocate
 	 * smaller buffers than DMI_SCAN_BUF_SIZE (that is, buffers that correspond to
@@ -58,11 +86,6 @@ struct riscv_batch *riscv_batch_alloc(struct target *target, size_t scans)
 		LOG_ERROR("Failed to allocate data_out in RISC-V batch.");
 		goto alloc_error;
 	};
-	out->data_in = malloc(sizeof(*out->data_in) * scans * DMI_SCAN_BUF_SIZE);
-	if (!out->data_in) {
-		LOG_ERROR("Failed to allocate data_in in RISC-V batch.");
-		goto alloc_error;
-	}
 	out->fields = malloc(sizeof(*out->fields) * scans);
 	if (!out->fields) {
 		LOG_ERROR("Failed to allocate fields in RISC-V batch.");
@@ -79,11 +102,6 @@ struct riscv_batch *riscv_batch_alloc(struct target *target, size_t scans)
 			LOG_ERROR("Failed to allocate bscan_ctxt in RISC-V batch.");
 			goto alloc_error;
 		}
-	}
-	out->read_keys = malloc(sizeof(*out->read_keys) * scans);
-	if (!out->read_keys) {
-		LOG_ERROR("Failed to allocate read_keys in RISC-V batch.");
-		goto alloc_error;
 	}
 
 	return out;
@@ -279,6 +297,16 @@ int riscv_batch_run_from(struct riscv_batch *batch, size_t start_idx,
 		const struct riscv_scan_delays *delays, bool resets_delays,
 		size_t reset_delays_after)
 {
+	if (batch->emulated) {
+		/* APB mode: flush the DAP queue to commit all queued operations. */
+		batch->was_run = true;
+		if (batch->queued_retval != ERROR_OK)
+			return batch->queued_retval;
+		if (batch->ap)
+			batch->queued_retval = dap_run(batch->ap->dap);
+		return batch->queued_retval;
+	}
+
 	assert(batch->used_scans);
 	assert(start_idx < batch->used_scans);
 	assert(batch->last_scan == RISCV_SCAN_TYPE_NOP);
@@ -331,6 +359,19 @@ int riscv_batch_run_from(struct riscv_batch *batch, size_t start_idx,
 void riscv_batch_add_dmi_write(struct riscv_batch *batch, uint32_t address, uint32_t data,
 		bool read_back, enum riscv_scan_delay_class delay_class)
 {
+	if (batch->emulated) {
+		/* APB mode: execute write inline, queue in DAP. */
+		if (batch->ap && batch->queued_retval == ERROR_OK) {
+			int ret = mem_ap_write_u32(batch->ap,
+					batch->ap_base + address * 4, data);
+			if (ret != ERROR_OK)
+				batch->queued_retval = ret;
+		}
+		batch->last_scan = RISCV_SCAN_TYPE_WRITE;
+		batch->used_scans++;
+		return;
+	}
+
 	// TODO: Check that the bit width of "address" is no more than dtmcs.abits,
 	// otherwise return an error (during batch creation or when the batch is executed).
 
@@ -361,6 +402,23 @@ void riscv_batch_add_dmi_write(struct riscv_batch *batch, uint32_t address, uint
 size_t riscv_batch_add_dmi_read(struct riscv_batch *batch, uint32_t address,
 		enum riscv_scan_delay_class delay_class)
 {
+	if (batch->emulated) {
+		/* APB mode: queue read inline; result available after dap_run(). */
+		uint32_t *result_ptr =
+			(uint32_t *)(batch->data_in + batch->used_scans * DMI_SCAN_BUF_SIZE);
+		*result_ptr = 0;
+		if (batch->ap && batch->queued_retval == ERROR_OK) {
+			int ret = mem_ap_read_u32(batch->ap,
+					batch->ap_base + address * 4, result_ptr);
+			if (ret != ERROR_OK)
+				batch->queued_retval = ret;
+		}
+		batch->last_scan = RISCV_SCAN_TYPE_READ;
+		batch->read_keys[batch->read_keys_used] = batch->used_scans;
+		batch->used_scans++;
+		return batch->read_keys_used++;
+	}
+
 	// TODO: Check that the bit width of "address" is no more than dtmcs.abits,
 	// otherwise return an error (during batch creation or when the batch is executed).
 
@@ -388,6 +446,10 @@ size_t riscv_batch_add_dmi_read(struct riscv_batch *batch, uint32_t address,
 
 uint32_t riscv_batch_get_dmi_read_op(const struct riscv_batch *batch, size_t key)
 {
+	if (batch->emulated)
+		return (batch->queued_retval == ERROR_OK)
+			? DTM_DMI_OP_SUCCESS : DTM_DMI_OP_FAILED;
+
 	assert(key < batch->read_keys_used);
 	size_t index = batch->read_keys[key];
 	assert(index < batch->used_scans);
@@ -401,6 +463,12 @@ uint32_t riscv_batch_get_dmi_read_data(const struct riscv_batch *batch, size_t k
 	assert(key < batch->read_keys_used);
 	size_t index = batch->read_keys[key];
 	assert(index < batch->used_scans);
+	if (batch->emulated) {
+		/* Result stored as uint32 at the start of the slot. */
+		const uint32_t *result_ptr =
+			(const uint32_t *)(batch->data_in + DMI_SCAN_BUF_SIZE * index);
+		return *result_ptr;
+	}
 	uint8_t *base = batch->data_in + DMI_SCAN_BUF_SIZE * index;
 	/* extract "data" field from the DMI read result */
 	return buf_get_u32(base, DTM_DMI_DATA_OFFSET, DTM_DMI_DATA_LENGTH);
@@ -408,6 +476,12 @@ uint32_t riscv_batch_get_dmi_read_data(const struct riscv_batch *batch, size_t k
 
 void riscv_batch_add_nop(struct riscv_batch *batch)
 {
+	if (batch->emulated) {
+		/* APB mode: NOP is a no-op; just mark the scan type. */
+		batch->last_scan = RISCV_SCAN_TYPE_NOP;
+		return;
+	}
+
 	assert(batch->used_scans < batch->allocated_scans);
 	struct scan_field *field = batch->fields + batch->used_scans;
 
@@ -437,6 +511,10 @@ size_t riscv_batch_available_scans(struct riscv_batch *batch)
 
 bool riscv_batch_was_batch_busy(const struct riscv_batch *batch)
 {
+	/* APB mode has no DMI busy concept. */
+	if (batch->emulated)
+		return false;
+
 	assert(batch->was_run);
 	assert(batch->used_scans);
 	assert(batch->last_scan == RISCV_SCAN_TYPE_NOP);

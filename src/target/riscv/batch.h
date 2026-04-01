@@ -4,6 +4,7 @@
 #define OPENOCD_TARGET_RISCV_BATCH_H
 
 #include "target/target.h"
+#include "target/arm_adi_v5.h"
 #include "jtag/jtag.h"
 #include "riscv.h"
 
@@ -159,6 +160,15 @@ struct riscv_batch {
 	 * Only valid when `was_run` is set.
 	 */
 	unsigned int last_scan_delay;
+
+	/*
+	 * APB/MEM-AP emulation mode: when set, DM accesses are done via
+	 * mem_ap_read/write_u32() instead of JTAG DR scans.
+	 */
+	bool emulated;
+	struct adiv5_ap *ap;
+	uint32_t ap_base;
+	int queued_retval;
 };
 
 /* Allocates (or frees) a new scan set.  "scans" is the maximum number of JTAG
